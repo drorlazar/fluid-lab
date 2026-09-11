@@ -255,6 +255,7 @@
 
     // Restart: fresh water, same walls, candles and settings.
     restart() {
+      this._lastInteract = performance.now();
       this.engine.clearDye(); this.engine.clearVelocity(); this.engine.clearHeat();
       this.frame = 0;
       if (this.config.onClear) this.config.onClear(this);
@@ -279,6 +280,8 @@
         this._acc = (this._acc || 0) + dtms;
         if (this._acc >= 1000 / 60) { this._tick(); this._acc = Math.min(this._acc - 1000 / 60, 1000 / 60); }
       }
+      // a slow cinematic turn when nobody has touched the 3D box for a while
+      if (this.volume && this.config.autoOrbit !== false && !this.pointer.down && now - (this._lastInteract || 0) > 7000) this.engine.cam.yaw += 0.0011 * (dtms / 16.7);
       this.render();
       this._watchFrame(dtms);
     }
@@ -354,6 +357,7 @@
       const c = this.stageEl;
       c.addEventListener('contextmenu', (e) => e.preventDefault());
       c.addEventListener('pointerdown', (e) => {
+        this._lastInteract = performance.now();
         if (!this.engine || e.target === this.hintEl || e.target === this.toastEl) return;
         try { c.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ }
         const g = this._gridPos(e);
@@ -415,12 +419,12 @@
       const dx = p.x - p.lx, dy = p.y - p.ly;
       const R = this.brushSize;
       if (this.volume) {
-        const dz = p.z - p.lz, kk = this.pushStrength;
+        const dz = p.z - p.lz, kk = this.pushStrength, col = this.currentColorRgb();
         if (brush === 'push') {
           if (phase === 'move') s.addVelocity(g.x, g.y, g.z, R * 1.6, dx * kk, dy * kk, dz * kk);
-          s.addSmoke(g.x, g.y, g.z, R, phase === 'down' ? 0.5 : 0.1, 0);
+          s.addSmoke(g.x, g.y, g.z, R, phase === 'down' ? 0.5 : 0.1, 0, col);
         } else if (brush === 'dye') {
-          s.addSmoke(g.x, g.y, g.z, R * 1.2, phase === 'down' ? 1.4 : 0.35, 0.25);
+          s.addSmoke(g.x, g.y, g.z, R * 1.2, phase === 'down' ? 1.4 : 0.35, 0.2, col);
         } else if (brush === 'heat') {
           s.addSmoke(g.x, g.y, g.z, R, 0.6, 1.6);
         }

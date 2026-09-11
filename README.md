@@ -29,7 +29,7 @@ The simulation runs on the GPU: the water is solved at 256 cells across and the 
 | 6 | The grid trick | A 24 by 15 grid with numbers in every box. Step one frame at a time. |
 | 7 | Wind tunnel | Round, box or wing obstacle, or draw your own. Watch the vortex street. |
 | 8 | Hot smoke | Click to place candles. Buoyancy, heat and a side fan. |
-| 9 | Light a fire in 3D | A real 3D smoke simulation (a 64-cell cube) with raymarched rendering: campfire, puff, and a 3D wind tunnel with a ball. Right-drag to orbit. |
+| 9 | Light a fire in 3D | A real 3D smoke simulation (a 64-cell cube) with raymarched rendering: campfire with sparks, colored puffs, smoke rings, a tornado, a 3D wind tunnel with a ball, a column or a wall with a hole, a Boom button and a cut-open view of the boxes. Right-drag to orbit. |
 | 10 | Vortex dance | Drop whirls. Same-way pairs orbit, opposite pairs travel. |
 | 11 | The mixing race | Wait for diffusion versus stir, with a timer and a mixed-ness meter. |
 | 12 | Marble painting | Swirl and comb ink, save the picture. |

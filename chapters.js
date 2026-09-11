@@ -261,19 +261,27 @@
     {
       id: 'volume',
       lab: {
-        engine: 'volume', fillAspect: true, brush: 'heat', brushes: ['heat', 'dye', 'push'], brushSize: 3, pushStrength: 0.9,
+        engine: 'volume', fillAspect: true, brush: 'heat', brushes: ['heat', 'dye', 'push'], brushSize: 3, pushStrength: 0.9, colors: PLAYGROUND.concat(['#ffffff']), color: '#ffffff',
         brushLabels: { dye: '@puff', push: '@poke' }, brushIcons: { dye: '☁️', push: '🖐️' },
-        params: { buoyancy: 0.08, vorticity: 0.35, dissipation: 0.008, windX: 0, sphere: 0, pressureIters: 24 },
+        params: { buoyancy: 0.08, vorticity: 0.35, dissipation: 0.008, windX: 0, shape: 0, shapeSize: 9, pressureIters: 24 },
         setup: (lab) => { applyVolumePreset(lab, lab.state.preset || 'campfire', true); },
         onClear: (lab) => { if (lab.engine.params.windX) lab.engine.setUniformFlow(lab.engine.params.windX); },
         onFrame: (lab) => {
-          const s = lab.engine, st = lab.state;
-          if (st.preset === 'campfire' || st.preset === 'puff') {
-            if (st.preset === 'campfire' || lab.frame % 90 < 12) {
-              const wob = Math.sin(lab.frame * 0.13) * 1.2;
-              s.addSmoke(32 + wob, 6, 32 + Math.cos(lab.frame * 0.09) * 1.2, 4.5, st.preset === 'campfire' ? 0.55 : 1.4, 1.1);
-              s.addVelocity(32, 6, 32, 5, Math.sin(lab.frame * 0.05) * 0.15, 0.25, Math.cos(lab.frame * 0.07) * 0.15);
-            }
+          const s = lab.engine, st = lab.state, f = lab.frame;
+          if (st.preset === 'campfire') {
+            const wob = Math.sin(f * 0.13) * 1.2;
+            s.addSmoke(32 + wob, 6, 32 + Math.cos(f * 0.09) * 1.2, 4.5, 0.55, 1.1);
+            s.addVelocity(32, 6, 32, 5, Math.sin(f * 0.05) * 0.15, 0.25, Math.cos(f * 0.07) * 0.15);
+          } else if (st.preset === 'puff') {
+            if (f % 100 < 10) { const c = rgb(PLAYGROUND[Math.floor(f / 100) % PLAYGROUND.length]); s.addSmoke(32, 10, 32, 5, 1.2, 0.8, c); s.addVelocity(32, 10, 32, 6, 0, 0.5, 0); }
+          } else if (st.preset === 'rings') {
+            if (f % 150 === 20) { st.ringHue = ((st.ringHue || 0) + 1) % PLAYGROUND.length; }
+            // a short sharp puff through a ring: smoke first, then a four-frame push, and the vortex ring rolls off on its own
+            if (f % 150 >= 20 && f % 150 < 26) { const c = rgb(PLAYGROUND[st.ringHue || 0]); s.addSmoke(9, 32, 32, 5.5, 1.3, 0, c); }
+            if (f % 150 >= 22 && f % 150 < 26) s.launchRing(8, 32, 32, 6.5, [1, 0, 0], 2.8);
+          } else if (st.preset === 'tornado') {
+            s.addTornado(32, 32, 7, 0.75, 0.3);
+            s.addSmoke(32 + Math.sin(f * 0.1) * 5, 3, 32 + Math.cos(f * 0.1) * 5, 4, 0.9, 0.0, [0.85, 0.8, 0.7]);
           } else if (st.preset === 'wind') {
             for (let y = 20; y <= 44; y += 6) for (let z = 20; z <= 44; z += 6) s.addSmoke(3, y, z, 1.4, 0.8, 0);
           }
@@ -281,9 +289,13 @@
         controls: [
           { type: 'segment', big: true, options: [
             { value: 'campfire', icon: '🔥', label: '@preset_campfire' }, { value: 'puff', icon: '💨', label: '@preset_puff' },
+            { value: 'rings', icon: '⭕', label: '@preset_rings' }, { value: 'tornado', icon: '🌪️', label: '@preset_tornado' },
             { value: 'wind', icon: '🌬️', label: '@preset_wind3d' },
           ], get: (lab) => lab.state.preset, set: (lab, v) => applyVolumePreset(lab, v) },
-          { type: 'brushes' },
+          { type: 'button', icon: '💥', label: '@boom', primary: true, big: true, action: (lab) => { lab.engine.boom(32 + (Math.random() - 0.5) * 20, 22 + Math.random() * 20, 32 + (Math.random() - 0.5) * 20, 1); lab._lastInteract = performance.now(); } },
+          { type: 'brushes' }, { type: 'colors' },
+          { type: 'toggle', label: '@cut', icon: '🔪', get: (lab) => !!lab.engine.cut, set: (lab, v) => { lab.engine.cut = v; } },
+          { type: 'toggle', label: '@sparks', icon: '✨', get: (lab) => lab.engine.sparks.on, set: (lab, v) => { lab.engine.sparks.on = v; } },
           { type: 'slider', key: 'buoyancy', label: '@lift', icon: '🎈', min: 0, max: 0.3, format: () => '', ends: ['@lift_none', '@lift_strong'], hint: '@hint_lift' },
           { type: 'slider', key: 'vorticity', label: '@extraSwirls', icon: '🌀', min: 0, max: 1.2, format: () => '', ends: ['@swirl_none', '@swirl_wild'], hint: '@hint_swirls' },
           playback({ step: false }),
@@ -291,7 +303,11 @@
           { type: 'section', label: '@sec_knobs' },
           { type: 'slider', key: 'dissipation', label: '@fade', icon: '🫥', min: 0, max: 0.05, format: () => '', ends: ['@fade_stays', '@fade_fast'], hint: '@hint_fade' },
           { type: 'slider', key: 'windX', label: '@wind', icon: '🌬️', min: 0, max: 1.2, format: () => '', ends: ['@wind_off', '@wind_strong'], hint: '@hint_wind', after: (lab, v) => lab.engine.setUniformFlow(v) },
-          { type: 'toggle', label: '@ball', icon: '⚪', get: (lab) => lab.engine.params.sphere > 0, set: (lab, v) => { lab.engine.params.sphere = v ? 9 : 0; } },
+          { type: 'segment', label: '@shape', options: [
+            { value: 0, icon: '🚫', label: '@shape_none' }, { value: 1, icon: '⚪', label: '@shape_ball' },
+            { value: 2, icon: '🏛️', label: '@shape_column' }, { value: 3, icon: '🍩', label: '@shape_hole' },
+          ], get: (lab) => lab.engine.params.shape || 0, set: (lab, v) => { lab.engine.params.shape = Number(v); } },
+          { type: 'slider', key: 'shapeSize', label: '@shapeSize', icon: '📏', min: 4, max: 16, curve: 'lin', format: () => '', ends: ['@brush_fine', '@brush_broad'] },
           { type: 'slider', label: '@brushSize', icon: '🖌️', min: 1, max: 8, get: (lab) => lab.brushSize, set: (lab, v) => { lab.brushSize = v; }, format: () => '', ends: ['@brush_fine', '@brush_broad'] },
           { type: 'section', label: '@sec_computer' },
           { type: 'slider', key: 'pressureIters', label: '@pressureQuality', icon: '🎯', min: 4, max: 60, curve: 'lin', integer: true, ends: ['@press_rough', '@press_careful'], hint: '@hint_pressure' },
@@ -421,18 +437,22 @@
   ];
 
   const VOLUME_PRESETS = {
-    campfire: { buoyancy: 0.08, vorticity: 0.35, dissipation: 0.008, windX: 0, sphere: 0 },
-    puff: { buoyancy: 0.04, vorticity: 0.5, dissipation: 0.004, windX: 0, sphere: 0 },
-    wind: { buoyancy: 0, vorticity: 0.1, dissipation: 0.0015, windX: 0.55, sphere: 10 },
+    campfire: { params: { buoyancy: 0.08, vorticity: 0.35, dissipation: 0.008, windX: 0, shape: 0 }, sparks: { mode: 0, emit: [32, 6, 32], radius: 3, lift: 0.05 }, brush: 'heat' },
+    puff: { params: { buoyancy: 0.04, vorticity: 0.5, dissipation: 0.004, windX: 0, shape: 0 }, sparks: { mode: 1, emit: [32, 10, 32], radius: 4, lift: 0.02 }, brush: 'dye' },
+    rings: { params: { buoyancy: 0.0, vorticity: 0.4, dissipation: 0.002, windX: 0, shape: 0 }, sparks: { mode: 1, emit: [9, 32, 32], radius: 5, lift: 0 }, brush: 'dye' },
+    tornado: { params: { buoyancy: 0.02, vorticity: 0.2, dissipation: 0.014, windX: 0, shape: 0 }, sparks: { mode: 1, emit: [32, 4, 32], radius: 3, lift: 0.0 }, brush: 'dye' },
+    wind: { params: { buoyancy: 0, vorticity: 0.1, dissipation: 0.0015, windX: 0.55, shape: 1, shapeSize: 10 }, sparks: { mode: 1, emit: [4, 32, 32], radius: 10, lift: 0 }, brush: 'push' },
   };
   function applyVolumePreset(lab, name, silent) {
     const p = VOLUME_PRESETS[name] || VOLUME_PRESETS.campfire;
     lab.state.preset = name;
     const s = lab.engine;
     if (!silent) s.reset();
-    Object.assign(s.params, p);
-    if (p.windX) s.setUniformFlow(p.windX);
-    lab.brush = name === 'wind' ? 'push' : 'heat';
+    Object.assign(s.params, p.params);
+    Object.assign(s.sparks, p.sparks);
+    if (p.params.windX) s.setUniformFlow(p.params.windX);
+    lab.brush = p.brush;
+    lab._lastInteract = performance.now();
     if (!silent) lab.buildControls();
   }
 
