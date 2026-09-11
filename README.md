@@ -1,6 +1,6 @@
 # Fluid Lab
 
-A colorful ink playground in twelve small discoveries, with a 3D "hills" view of pressure, ink or speed on every GPU chapter, a "Play with the rules" drawer of physics knobs on every page,: how water, smoke and wind move (the three ingredients of the Navier-Stokes equations), built for a parent and a nine-year-old to explore together. English with a Hebrew toggle, a Glow or Paper look, and a "Peek inside" drawer with the science in each chapter.
+A colorful ink playground in thirteen small discoveries, with a 3D "hills" view of pressure, ink or speed on every GPU chapter, a "Play with the rules" drawer of physics knobs on every page,: how water, smoke and wind move (the three ingredients of the Navier-Stokes equations), built for a parent and a nine-year-old to explore together. English with a Hebrew toggle, a Glow or Paper look, and a "Peek inside" drawer with the science in each chapter.
 
 Inspired by the Two Minute Papers video "I Never Thought I'd See This Happen" (https://youtu.be/mOvtumfyjCs), on OpenAI's claimed solution of the Navier-Stokes existence and smoothness problem. Transcript: `reference/video-transcript.txt`.
 
@@ -29,10 +29,11 @@ The simulation runs on the GPU: the water is solved at 256 cells across and the 
 | 6 | The grid trick | A 24 by 15 grid with numbers in every box. Step one frame at a time. |
 | 7 | Wind tunnel | Round, box or wing obstacle, or draw your own. Watch the vortex street. |
 | 8 | Hot smoke | Click to place candles. Buoyancy, heat and a side fan. |
-| 9 | Vortex dance | Drop whirls. Same-way pairs orbit, opposite pairs travel. |
-| 10 | The mixing race | Wait for diffusion versus stir, with a timer and a mixed-ness meter. |
-| 11 | Marble painting | Swirl and comb ink, save the picture. |
-| 12 | The big sandbox | Every knob of the solver, with presets. |
+| 9 | Light a fire in 3D | A real 3D smoke simulation (a 64-cell cube) with raymarched rendering: campfire, puff, and a 3D wind tunnel with a ball. Right-drag to orbit. |
+| 10 | Vortex dance | Drop whirls. Same-way pairs orbit, opposite pairs travel. |
+| 11 | The mixing race | Wait for diffusion versus stir, with a timer and a mixed-ness meter. |
+| 12 | Marble painting | Swirl and comb ink, save the picture. |
+| 13 | The big sandbox | Every knob of the solver, with presets. |
 
 ## Buttons
 
@@ -42,10 +43,11 @@ The simulation runs on the GPU: the water is solved at 256 cells across and the 
 ## Files
 
 - `index.html`, `style.css`, `icons.js` — the page, its game-style chrome (sky, cream cards, cobalt slabs, gold action) and the SVG icon set
+- `gpu3d.js` — the 3D volumetric smoke engine (tiled-atlas WebGL2 solver plus raymarched rendering with shadows)
 - `gpu.js` — the WebGL2 fluid engine (velocity, pressure, RGB ink at higher resolution, temperature and buoyancy, obstacles, vorticity confinement, MacCormack ink advection, wind inflow, bloom, mixing meter)
 - `fluid.js` — the CPU solver with the same interface, used for the 24 by 15 counting grid and as a fallback
 - `lab.js` — the reusable lab: canvases, brushes, render modes, the controls tray, quality tiers
-- `content.js` — every visible string in English and Hebrew (UI labels and the twelve chapters)
+- `content.js` — every visible string in English and Hebrew (UI labels and the thirteen chapters)
 - `chapters.js` — the twelve lab configurations
 - `app.js` — navigation, language and look switching
 - `build-single.py` — bundles everything into `dist/fluid-lab.html` for publishing

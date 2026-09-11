@@ -52,7 +52,8 @@
   }
 
   function seedStripes(lab) {
-    lab.engine.fillBands([rgb('#ffb02e'), rgb('#3fb6ff')], Math.max(3, Math.round(lab.engine.H / 14)), 0.7);
+    // four soft bands: two hues, light and dark, so a whirl reads as a spiral instead of a zebra
+    lab.engine.fillBands([rgb('#ffb02e'), rgb('#ffd98a'), rgb('#3fb6ff'), rgb('#9fdcff')], Math.max(3, Math.round(lab.engine.H / 22)), 0.7);
   }
 
   const playback = (extra) => Object.assign({ type: 'playback' }, extra || {});
@@ -98,7 +99,7 @@
       id: 'intro',
       lab: {
         grid: [144, 90], brush: 'push', brushSize: 5, rainbow: true, colors: PLAYGROUND,
-        params: { vorticity: 0.18, dissipation: 0.0035, diffusion: 0 },
+        params: { vorticity: 0.08, dissipation: 0.0035, diffusion: 0 },
         onFrame: (lab) => {
           const s = lab.engine;
           const every = lab.touched ? 120 : 70;
@@ -129,7 +130,7 @@
       id: 'advection',
       lab: {
         grid: [128, 80], brush: 'push', brushes: ['push', 'dye'], brushSize: 4, colors: PLAYGROUND,
-        params: { vorticity: 0.15, dissipation: 0 },
+        params: { vorticity: 0.06, dissipation: 0 },
         setup: (lab) => lab.setHint(lab.t('dragHint')),
         controls: [{ type: 'brushes' }, { type: 'colors' }, playback({ step: false })].concat(rules(['thickness', 'swirls', 'brush'], VIEWS)),
       },
@@ -139,7 +140,7 @@
       id: 'pressure',
       lab: {
         grid: [128, 80], brush: 'push', brushes: ['push', 'dye'], brushSize: 5, colors: PLAYGROUND,
-        params: { vorticity: 0.15, dissipation: 0 },
+        params: { vorticity: 0.06, dissipation: 0 },
         renderModes: ['dye', 'mountains'],
         setup: (lab) => {
           const s = lab.engine;
@@ -157,7 +158,7 @@
       id: 'diffusion',
       lab: {
         grid: [128, 80], dyeMul: 2, brush: 'dye', brushes: ['dye', 'push'], brushSize: 3, colors: PLAYGROUND,
-        params: { diffusion: 0.00003, viscosity: 0, dissipation: 0, vorticity: 0.1 },
+        params: { diffusion: 0.00003, viscosity: 0, dissipation: 0, vorticity: 0.04 },
         controls: [
           { type: 'button', icon: '💧', label: '@dropInk', primary: true, big: true, action: (lab) => {
             const s = lab.engine; const c = rgb(PLAYGROUND[Math.floor(Math.random() * PLAYGROUND.length)]);
@@ -173,7 +174,7 @@
       id: 'forces',
       lab: {
         grid: [128, 80], brush: 'dye', brushes: ['dye', 'push'], brushSize: 4, colors: PLAYGROUND,
-        params: { vorticity: 0.15, dissipation: 0.004, diffusion: 0 },
+        params: { vorticity: 0.06, dissipation: 0.004, diffusion: 0 },
         onFrame: (lab) => { if (lab.state.fan) fanJet(lab, 1.6); },
         controls: [
           { type: 'toggle', label: '@fanSide', icon: '🌬️', big: true, get: (lab) => !!lab.state.fan, set: (lab, v) => { lab.state.fan = v; } },
@@ -186,10 +187,11 @@
     {
       id: 'grid',
       lab: {
-        engine: 'cpu', grid: [24, 15], brush: 'dye', brushes: ['dye', 'push'], brushSize: 0.6, pushStrength: 0.5, colors: ['#ffd23f'],
+        engine: 'cpu', grid: [24, 15], brush: 'dye', brushes: ['dye', 'push'], brushSize: 0.6, pushStrength: 2.5, colors: ['#ffd23f'],
         render: 'grid', paused: true, gridArrows: true, showCursor: false,
-        params: { diffusion: 0.0004, dissipation: 0, vorticity: 0, conserveDye: true, pressureIters: 40, sharpAdvection: false },
-        setup: (lab) => { lab.showNumbers = true; },
+        params: { diffusion: 0.0004, dissipation: 0, vorticity: 0, conserveDye: true, pressureIters: 40, sharpAdvection: false, viscosity: 0 },
+        setup: (lab) => { lab.showNumbers = true; lab.config.gridArrows = true; },
+        onPointer: (lab, phase, g) => { if (lab.brush === 'push' && phase === 'move') { lab.engine.addVelocity(g.x, g.y, 1.6, (g.x - lab.pointer.lx) * 2.5, (g.y - lab.pointer.ly) * 2.5); return true; } return false; },
         controls: [
           playback({ primaryStep: true, clear: true }),
           { type: 'toggle', label: '@numbers', icon: '🔢', get: (lab) => lab.showNumbers, set: (lab, v) => { lab.showNumbers = v; } },
@@ -203,7 +205,7 @@
       id: 'windtunnel',
       lab: {
         grid: [160, 80], brush: 'none', brushes: ['none', 'solid', 'eraser'], brushSize: 3, render: 'dye', renderModes: ['dye', 'speed', 'curl'], speedScale: 1.6, bloom: false,
-        params: { windX: 0.6, vorticity: 0.02, dissipation: 0.005, viscosity: 0, diffusion: 0, conserveDye: false, pressureIters: 40, sharpVelocity: true },
+        params: { windX: 0.6, vorticity: 0, dissipation: 0.005, viscosity: 0.0000015, diffusion: 0, conserveDye: false, pressureIters: 40, sharpVelocity: true, maxSpeed: 3 },
         setup: (lab) => placeShape(lab, lab.state.shape || 'circle'),
         onClear: (lab) => { if (lab.engine.setUniformFlow) lab.engine.setUniformFlow(lab.engine.params.windX, 0); },
         onFrame: (lab) => smokeStripes(lab, [0.8, 0.82, 0.9], 5, 0.5),
@@ -222,7 +224,7 @@
       id: 'smoke',
       lab: {
         grid: [112, 96], brush: 'heat', brushes: ['heat', 'solid', 'eraser'], brushSize: 3, tempGlow: true,
-        params: { buoyancy: 0.3, vorticity: 0.12, dissipation: 0.008, diffusion: 0.00002, viscosity: 0.000004, tempCooling: 0.06 },
+        params: { buoyancy: 0.3, vorticity: 0.08, dissipation: 0.008, diffusion: 0.00002, viscosity: 0.000004, tempCooling: 0.06 },
         setup: (lab) => { lab.state.candles = [{ x: lab.engine.W * 0.5, y: lab.engine.H * 0.82 }]; lab.state.heat = 1; lab.state.fan = 0; },
         onPointer: (lab, phase, g) => {
           if (lab.brush !== 'heat') return false;
@@ -257,20 +259,72 @@
     },
 
     {
+      id: 'volume',
+      lab: {
+        engine: 'volume', fillAspect: true, brush: 'heat', brushes: ['heat', 'dye', 'push'], brushSize: 3, pushStrength: 0.9,
+        brushLabels: { dye: '@puff', push: '@poke' }, brushIcons: { dye: '☁️', push: '🖐️' },
+        params: { buoyancy: 0.08, vorticity: 0.35, dissipation: 0.008, windX: 0, sphere: 0, pressureIters: 24 },
+        setup: (lab) => { applyVolumePreset(lab, lab.state.preset || 'campfire', true); },
+        onClear: (lab) => { if (lab.engine.params.windX) lab.engine.setUniformFlow(lab.engine.params.windX); },
+        onFrame: (lab) => {
+          const s = lab.engine, st = lab.state;
+          if (st.preset === 'campfire' || st.preset === 'puff') {
+            if (st.preset === 'campfire' || lab.frame % 90 < 12) {
+              const wob = Math.sin(lab.frame * 0.13) * 1.2;
+              s.addSmoke(32 + wob, 6, 32 + Math.cos(lab.frame * 0.09) * 1.2, 4.5, st.preset === 'campfire' ? 0.55 : 1.4, 1.1);
+              s.addVelocity(32, 6, 32, 5, Math.sin(lab.frame * 0.05) * 0.15, 0.25, Math.cos(lab.frame * 0.07) * 0.15);
+            }
+          } else if (st.preset === 'wind') {
+            for (let y = 20; y <= 44; y += 6) for (let z = 20; z <= 44; z += 6) s.addSmoke(3, y, z, 1.4, 0.8, 0);
+          }
+        },
+        controls: [
+          { type: 'segment', big: true, options: [
+            { value: 'campfire', icon: '🔥', label: '@preset_campfire' }, { value: 'puff', icon: '💨', label: '@preset_puff' },
+            { value: 'wind', icon: '🌬️', label: '@preset_wind3d' },
+          ], get: (lab) => lab.state.preset, set: (lab, v) => applyVolumePreset(lab, v) },
+          { type: 'brushes' },
+          { type: 'slider', key: 'buoyancy', label: '@lift', icon: '🎈', min: 0, max: 0.3, format: () => '', ends: ['@lift_none', '@lift_strong'], hint: '@hint_lift' },
+          { type: 'slider', key: 'vorticity', label: '@extraSwirls', icon: '🌀', min: 0, max: 1.2, format: () => '', ends: ['@swirl_none', '@swirl_wild'], hint: '@hint_swirls' },
+          playback({ step: false }),
+          { type: 'drawer', label: '@rules' },
+          { type: 'section', label: '@sec_knobs' },
+          { type: 'slider', key: 'dissipation', label: '@fade', icon: '🫥', min: 0, max: 0.05, format: () => '', ends: ['@fade_stays', '@fade_fast'], hint: '@hint_fade' },
+          { type: 'slider', key: 'windX', label: '@wind', icon: '🌬️', min: 0, max: 1.2, format: () => '', ends: ['@wind_off', '@wind_strong'], hint: '@hint_wind', after: (lab, v) => lab.engine.setUniformFlow(v) },
+          { type: 'toggle', label: '@ball', icon: '⚪', get: (lab) => lab.engine.params.sphere > 0, set: (lab, v) => { lab.engine.params.sphere = v ? 9 : 0; } },
+          { type: 'slider', label: '@brushSize', icon: '🖌️', min: 1, max: 8, get: (lab) => lab.brushSize, set: (lab, v) => { lab.brushSize = v; }, format: () => '', ends: ['@brush_fine', '@brush_broad'] },
+          { type: 'section', label: '@sec_computer' },
+          { type: 'slider', key: 'pressureIters', label: '@pressureQuality', icon: '🎯', min: 4, max: 60, curve: 'lin', integer: true, ends: ['@press_rough', '@press_careful'], hint: '@hint_pressure' },
+          { type: 'slider', key: 'dt', label: '@timeSpeed', icon: '⏱️', min: 0.1, max: 2, curve: 'lin', format: (v) => v.toFixed(1) + 'x', ends: ['@time_slow', '@time_fast'], hint: '@hint_time' },
+          { type: 'segment', label: '@boxes', options: [
+            { value: 'low', label: '48' }, { value: 'medium', label: '64' }, { value: 'high', label: '80' },
+          ], get: (lab) => lab.quality, set: (lab, v) => { lab.setQuality(v); lab.buildControls(); } },
+          { type: 'button', icon: '↩️', label: '@restore', action: (lab) => lab.restoreParams() },
+        ],
+      },
+    },
+
+    {
       id: 'vortex',
       lab: {
-        grid: [128, 96], brush: 'vortex', brushSize: 4, vortexStrength: 1.6, render: 'dye', renderModes: ['dye', 'curl', 'arrows'],
-        params: { viscosity: 0, vorticity: 0.03, dissipation: 0, diffusion: 0, pressureIters: 30 },
+        grid: [128, 96], brush: 'vortex', brushSize: 5, vortexStrength: 1.3, render: 'dye', renderModes: ['dye', 'curl', 'arrows'],
+        params: { viscosity: 0.000001, vorticity: 0, dissipation: 0, diffusion: 0, pressureIters: 40, maxSpeed: 4 },
         setup: (lab) => { seedStripes(lab); lab.vortexSign = 1; },
         onClear: (lab) => seedStripes(lab),
         controls: [
           { type: 'button', icon: '🔁', label: '@sameWay', primary: true, big: true, action: (lab) => {
             const s = lab.engine; s.clearVelocity(); seedStripes(lab);
-            s.addVortex(s.W * 0.5 - 17, s.H * 0.5, 8, 1.4); s.addVortex(s.W * 0.5 + 17, s.H * 0.5, 8, 1.4);
+            s.addVortex(s.W * 0.5 - 20, s.H * 0.5, 10, 1.2); s.addVortex(s.W * 0.5 + 20, s.H * 0.5, 10, 1.2);
           } },
           { type: 'button', icon: '↔️', label: '@opposite', primary: true, big: true, action: (lab) => {
             const s = lab.engine; s.clearVelocity(); seedStripes(lab);
-            s.addVortex(s.W * 0.25, s.H * 0.5 - 13, 8, -1.4); s.addVortex(s.W * 0.25, s.H * 0.5 + 13, 8, 1.4);
+            s.addVortex(s.W * 0.22, s.H * 0.5 - 14, 10, -1.2); s.addVortex(s.W * 0.22, s.H * 0.5 + 14, 10, 1.2);
+          } },
+          { type: 'button', icon: '🐸', label: '@leapfrog', big: true, action: (lab) => {
+            // two opposite pairs, one behind the other: the back pair squeezes through the front pair, again and again
+            const s = lab.engine; s.clearVelocity(); seedStripes(lab);
+            s.addVortex(s.W * 0.3, s.H * 0.5 - 12, 8, -1.2); s.addVortex(s.W * 0.3, s.H * 0.5 + 12, 8, 1.2);
+            s.addVortex(s.W * 0.14, s.H * 0.5 - 18, 8, -1.2); s.addVortex(s.W * 0.14, s.H * 0.5 + 18, 8, 1.2);
           } },
           { type: 'toggle', label: '@spinDirection', icon: '🔄', get: (lab) => lab.vortexSign > 0, set: (lab, v) => { lab.vortexSign = v ? 1 : -1; } },
           { type: 'button', icon: '🧵', label: '@fresh', action: (lab) => seedStripes(lab) },
@@ -283,7 +337,7 @@
       id: 'mixing',
       lab: {
         grid: [96, 96], dyeMul: 1, brush: 'none', brushSize: 5, pushStrength: 0.7, colors: ['#ffffff'], tempGlow: false, wantsMixedness: true, pushDye: false, bloom: false,
-        params: { diffusion: 0.000025, dissipation: 0, vorticity: 0.1, viscosity: 0, conserveDye: true },
+        params: { diffusion: 0.000025, dissipation: 0, vorticity: 0.04, viscosity: 0, conserveDye: true },
         setup: (lab) => {
           lab.engine.fillHalves([0.95, 0.12, 0], [0, 0.35, 0.95]);
           lab.state.round = 0; lab.state.done = false; lab.brush = 'none';
@@ -316,7 +370,7 @@
       id: 'marble',
       lab: {
         grid: [144, 96], brush: 'swirl', brushes: ['swirl', 'dye', 'push'], brushSize: 5, pushStrength: 0.5, colors: CANDY.concat(OCEAN.slice(0, 2)), pushDye: false,
-        params: { viscosity: 0.000005, diffusion: 0, dissipation: 0, vorticity: 0.2 },
+        params: { viscosity: 0.000005, diffusion: 0, dissipation: 0, vorticity: 0.06 },
         setup: (lab) => lab.engine.fillBands([rgb('#ff4f9a'), rgb('#3d7dff'), rgb('#ffd23f'), rgb('#22e3d1')], lab.engine.H / 8, 0.8),
         onClear: (lab) => lab.config.setup(lab),
         controls: [
@@ -335,7 +389,7 @@
       lab: {
         grid: [128, 80], brush: 'push', brushes: ['push', 'dye', 'swirl', 'heat', 'vortex', 'solid', 'eraser'], brushSize: 4, colors: PLAYGROUND,
         render: 'dye', renderModes: ['dye', 'speed', 'arrows', 'curl', 'pressure'], speedScale: 2, vortexStrength: 2.5,
-        params: { vorticity: 0.25, dissipation: 0.002, diffusion: 0.000005, viscosity: 0, buoyancy: 0.5, tempCooling: 0.04, pressureIters: 40, dt: 1 },
+        params: { vorticity: 0.08, dissipation: 0.002, diffusion: 0.000005, viscosity: 0, buoyancy: 0.5, tempCooling: 0.04, pressureIters: 40, dt: 1 },
         setup: (lab) => {
           lab.state.preset = lab.state.preset || 'water';
           lab.state.smoke = lab.state.preset === 'wind';
@@ -366,6 +420,22 @@
     },
   ];
 
+  const VOLUME_PRESETS = {
+    campfire: { buoyancy: 0.08, vorticity: 0.35, dissipation: 0.008, windX: 0, sphere: 0 },
+    puff: { buoyancy: 0.04, vorticity: 0.5, dissipation: 0.004, windX: 0, sphere: 0 },
+    wind: { buoyancy: 0, vorticity: 0.1, dissipation: 0.0015, windX: 0.55, sphere: 10 },
+  };
+  function applyVolumePreset(lab, name, silent) {
+    const p = VOLUME_PRESETS[name] || VOLUME_PRESETS.campfire;
+    lab.state.preset = name;
+    const s = lab.engine;
+    if (!silent) s.reset();
+    Object.assign(s.params, p);
+    if (p.windX) s.setUniformFlow(p.windX);
+    lab.brush = name === 'wind' ? 'push' : 'heat';
+    if (!silent) lab.buildControls();
+  }
+
   function startRound(lab, round) {
     const keep = Object.assign({}, lab.persist);
     lab.reset();
@@ -377,12 +447,12 @@
   }
 
   const PRESETS = {
-    water: { params: { viscosity: 0, diffusion: 0.000005, dissipation: 0.002, vorticity: 0.25, inkWeight: 0, buoyancy: 0.5, windX: 0, pressureIters: 24, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'push', rainbow: true },
+    water: { params: { viscosity: 0, diffusion: 0.000005, dissipation: 0.002, vorticity: 0.08, inkWeight: 0, buoyancy: 0.5, windX: 0, pressureIters: 24, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'push', rainbow: true },
     honey: { params: { viscosity: 0.00015, diffusion: 0, dissipation: 0, vorticity: 0, inkWeight: 0, buoyancy: 0, windX: 0, pressureIters: 24, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'push', rainbow: false, color: '#ffd23f' },
-    smoke: { params: { viscosity: 0, diffusion: 0.00003, dissipation: 0.008, vorticity: 0.45, inkWeight: 0, buoyancy: 0.8, windX: 0, pressureIters: 24, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'heat', rainbow: false, color: '#ffffff' },
-    wind: { params: { viscosity: 0, diffusion: 0, dissipation: 0.005, vorticity: 0.02, inkWeight: 0, buoyancy: 0, windX: 0.6, pressureIters: 28, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: true }, brush: 'solid', rainbow: false, color: '#ffffff', shape: 'circle' },
-    slowmo: { params: { viscosity: 0, diffusion: 0.00001, dissipation: 0, vorticity: 0.3, inkWeight: 0, buoyancy: 0.5, windX: 0, pressureIters: 24, dt: 0.2, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'vortex', rainbow: true },
-    wobbly: { params: { viscosity: 0, diffusion: 0.00002, dissipation: 0.002, vorticity: 0.25, inkWeight: 0, buoyancy: 0, windX: 0, pressureIters: 1, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'push', rainbow: true },
+    smoke: { params: { viscosity: 0, diffusion: 0.00003, dissipation: 0.008, vorticity: 0.15, inkWeight: 0, buoyancy: 0.8, windX: 0, pressureIters: 24, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'heat', rainbow: false, color: '#ffffff' },
+    wind: { params: { viscosity: 0.0000015, diffusion: 0, dissipation: 0.005, vorticity: 0, inkWeight: 0, buoyancy: 0, windX: 0.6, pressureIters: 40, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: true, maxSpeed: 3 }, brush: 'solid', rainbow: false, color: '#ffffff', shape: 'circle' },
+    slowmo: { params: { viscosity: 0, diffusion: 0.00001, dissipation: 0, vorticity: 0.1, inkWeight: 0, buoyancy: 0.5, windX: 0, pressureIters: 24, dt: 0.2, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'vortex', rainbow: true },
+    wobbly: { params: { viscosity: 0, diffusion: 0.00002, dissipation: 0.002, vorticity: 0.08, inkWeight: 0, buoyancy: 0, windX: 0, pressureIters: 1, dt: 1, advect: true, project: true, diffuse: true, sharpVelocity: false }, brush: 'push', rainbow: true },
   };
 
   function applyPreset(lab, name) {

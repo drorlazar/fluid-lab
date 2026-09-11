@@ -14,7 +14,7 @@
   const VIEW_ICONS = { dye: '🎨', speed: '🔥', arrows: '➡️', curl: '🌀', pressure: '💨', grid: '🔲', mountains: '⛰️' };
   const VIEW_KEYS = { dye: 'ink', speed: 'speed', arrows: 'arrows', curl: 'swirls', pressure: 'pressure', grid: 'grid', mountains: 'mountains' };
   // velocity grid width (cells across) and dye multiplier per tier; the ink is what needs the pixels
-  const QUALITY = { low: { sim: 160, dye: 4 }, medium: { sim: 256, dye: 4 }, high: { sim: 384, dye: 4 } };
+  const QUALITY = { low: { sim: 160, dye: 4, vol: 48 }, medium: { sim: 256, dye: 4, vol: 64 }, high: { sim: 384, dye: 4, vol: 80 } };
 
   function hexToRgb(hex) {
     const n = parseInt(hex.slice(1), 16);
@@ -120,6 +120,14 @@
     _fitAspect() {
       const cfg = this.config;
       if (this.cpu || cfg.fillAspect === false) return;
+      if (this.volume) {
+        // the raymarched box renders at any aspect: just size the canvas to the free space
+        const col = this.host.getBoundingClientRect();
+        const ctlH = this.controlsEl.hidden ? 0 : this.controlsEl.offsetHeight + 14;
+        const availW = col.width, availH = window.innerWidth <= 1080 ? Math.round(window.innerHeight * 0.6) : col.height - ctlH;
+        if (availW > 100 && availH > 100) { const H = Math.max(6, Math.round(16 * availH / availW)); if (H !== this.engine.H) { this.engine.H = H; this._fitCanvas(); } }
+        return;
+      }
       const col = this.host.getBoundingClientRect();
       const ctlH = this.controlsEl.hidden ? 0 : this.controlsEl.offsetHeight + 14;
       // desktop: fill the free height beside the card; phone/tablet: about 60% of the screen height
@@ -144,7 +152,20 @@
       if (old && old.dispose && !inherit) old.dispose();
       const useCpu = this.config.engine === 'cpu' || !this.gpuOk;
       this.cpu = useCpu;
-      if (useCpu) {
+      this.volume = false;
+      if (!useCpu && this.config.engine === 'volume') {
+        const q = QUALITY[this.quality] || QUALITY.medium;
+        try {
+          this.engine = new VolumeFluid(this.glCanvas, q.vol);
+          this.engine.look = this.look;
+          this.volume = true;
+          this.glCanvas.hidden = false;
+        } catch (err) {
+          console.warn('Fluid Lab: 3D engine failed.', err);
+          this.engine = new FluidSolver(w, h); this.cpu = true; this.glCanvas.hidden = true;
+          this.off.width = w + 2; this.off.height = h + 2; this.img = this.offctx.createImageData(w + 2, h + 2);
+        }
+      } else if (useCpu) {
         this.engine = new FluidSolver(w, h);
         this.off.width = w + 2; this.off.height = h + 2;
         this.img = this.offctx.createImageData(w + 2, h + 2);
@@ -168,7 +189,7 @@
       }
       if (this.config.params) Object.assign(this.engine.params, this.config.params);
       if (keep) Object.assign(this.engine.params, keep);
-      if (inherit && old && old.isGpu && this.engine.isGpu) { this.engine.copyFrom(old); old.dispose(); }
+      if (inherit && old && old.isGpu && this.engine.isGpu && !this.volume && !old.isVolume) { this.engine.copyFrom(old); old.dispose(); }
       else if (inherit && old && old.dispose) old.dispose();
       this._fitCanvas();
     }
@@ -243,7 +264,7 @@
     // Put every solver parameter back to what the chapter started with.
     restoreParams() {
       const eng = this.engine;
-      const base = Object.assign({}, eng.isGpu ? GpuFluid.DEFAULTS : FluidSolver.DEFAULTS || {}, this.config.params || {});
+      const base = Object.assign({}, eng.isVolume ? VolumeFluid.DEFAULTS : eng.isGpu ? GpuFluid.DEFAULTS : FluidSolver.DEFAULTS || {}, this.config.params || {});
       Object.assign(eng.params, base);
       this.buildControls();
     }
@@ -316,7 +337,7 @@
 
     // ---------- pointer ----------
 
-    get is3d() { return this.view === 'mountains' && !this.cpu; }
+    get is3d() { return (this.view === 'mountains' && !this.cpu) || !!this.volume; }
 
     _gridPos(e) {
       const r = this.ov.getBoundingClientRect();
@@ -324,7 +345,7 @@
       if (this.is3d && this.engine.pick) {
         const hit = this.engine.pick(px * 2 - 1, 1 - py * 2);
         if (hit) return hit;
-        return { x: 0, y: 0, inside: false };
+        return { x: 0, y: 0, z: 0, inside: false };
       }
       return { x: 1 + px * this.engine.W, y: 1 + py * this.engine.H, inside: px >= 0 && px <= 1 && py >= 0 && py <= 1 };
     }
@@ -337,7 +358,7 @@
         try { c.setPointerCapture(e.pointerId); } catch (_) { /* synthetic */ }
         const g = this._gridPos(e);
         const p = this.pointer;
-        p.down = true; p.button = e.button; p.x = p.lx = g.x; p.y = p.ly = g.y;
+        p.down = true; p.button = e.button; p.x = p.lx = g.x; p.y = p.ly = g.y; p.z = p.lz = g.z || 0;
         this._applyBrush('down', g, e);
         if (!this.touched) { this.touched = true; this.setHint(''); if (this.config.onFirstTouch) this.config.onFirstTouch(this); else if (this.brush !== 'none') { this.toast(this.t('firstTouch')); this.burst(e.clientX, e.clientY); } }
       });
@@ -345,7 +366,7 @@
         if (!this.engine) return;
         const g = this._gridPos(e);
         const p = this.pointer;
-        p.lx = p.x; p.ly = p.y; p.x = g.x; p.y = g.y;
+        p.lx = p.x; p.ly = p.y; p.lz = p.z; p.x = g.x; p.y = g.y; p.z = g.z || 0;
         this.hover = g;
         if (p.down) this._applyBrush('move', g, e);
       });
@@ -393,6 +414,18 @@
       if (!g.inside && this.is3d) return;
       const dx = p.x - p.lx, dy = p.y - p.ly;
       const R = this.brushSize;
+      if (this.volume) {
+        const dz = p.z - p.lz, kk = this.pushStrength;
+        if (brush === 'push') {
+          if (phase === 'move') s.addVelocity(g.x, g.y, g.z, R * 1.6, dx * kk, dy * kk, dz * kk);
+          s.addSmoke(g.x, g.y, g.z, R, phase === 'down' ? 0.5 : 0.1, 0);
+        } else if (brush === 'dye') {
+          s.addSmoke(g.x, g.y, g.z, R * 1.2, phase === 'down' ? 1.4 : 0.35, 0.25);
+        } else if (brush === 'heat') {
+          s.addSmoke(g.x, g.y, g.z, R, 0.6, 1.6);
+        }
+        return;
+      }
       const col = this.currentColorRgb();
       switch (brush) {
         case 'push': {
@@ -594,9 +627,10 @@
           let brushes = spec.brushes || this.config.brushes || [this.brush];
           if (this.is3d) brushes = ['orbit'].concat(brushes.filter((b) => b !== 'orbit'));
           if (brushes.length < 2 && !spec.force) return null;
+          const names = this.config.brushLabels || {};
           return this._buildControl({
             type: 'segment', big: true, label: spec.label,
-            options: brushes.map((b) => ({ value: b, icon: BRUSH_ICONS[b], label: t('tool_' + BRUSH_KEYS[b]) })),
+            options: brushes.map((b) => ({ value: b, icon: (this.config.brushIcons || {})[b] || BRUSH_ICONS[b], label: names[b] ? this.tx(names[b]) : t('tool_' + BRUSH_KEYS[b]) })),
             get: () => this.brush, set: (_, v) => { this.brush = v; },
           });
         }
@@ -618,7 +652,7 @@
           });
         }
         case 'height': {
-          if (!this.is3d) return null;
+          if (!this.is3d || this.volume) return null;
           return this._buildControl({
             type: 'segment', label: t('height'),
             options: [{ value: 'pressure', icon: '💨', label: t('height_pressure') }, { value: 'ink', icon: '🎨', label: t('height_ink') }, { value: 'speed', icon: '🔥', label: t('height_speed') }],
@@ -670,6 +704,11 @@
       const W = this.engine.W, H = this.engine.H;
       const cellW = cw / W, cellH = ch / H;
       const view = this.view;
+      if (this.volume) {
+        this.engine.render({ fire: this.config.fire, densScale: this.config.densScale, steps: this.mobile ? 64 : 96 });
+        ctx.clearRect(0, 0, cw, ch);
+        return;
+      }
       if (this.cpu) {
         this._renderCpu(ctx, cw, ch, view);
       } else {
@@ -728,14 +767,19 @@
       ctx.strokeStyle = col; ctx.fillStyle = col;
       ctx.lineWidth = Math.max(1, 1.4 * this.dpr);
       const maxLen = Math.min(cellW, cellH) * stride * 0.9;
-      const scale = Math.min(cellW, cellH) * stride * 0.6;
+      // scale to the strongest cell so even a gentle push shows as a readable arrow
+      let vmax = 0;
+      for (let j = 1; j <= H; j++) for (let i = 1; i <= W; i++) { const idx = i + j * S; const m = Math.hypot(s.u[idx], s.v[idx]); if (m > vmax) vmax = m; }
+      if (vmax < 1e-4) { ctx.restore(); return; }
+      const scale = maxLen / vmax;
+      const floor = vmax * 0.06;
       for (let j = 1; j <= H; j += stride) for (let i = 1; i <= W; i += stride) {
         const idx = i + j * S;
         if (s.solid[idx]) continue;
         const u = s.u[idx], v = s.v[idx];
         const len = Math.sqrt(u * u + v * v);
-        if (len < 0.02) continue;
-        const L = Math.min(maxLen, len * scale);
+        if (len < floor) continue;
+        const L = Math.max(Math.min(cellW, cellH) * 0.35, Math.min(maxLen, len * scale));
         const cx = (i - 1 + (stride - 1) / 2 + 0.5) * cellW, cy = (j - 1 + (stride - 1) / 2 + 0.5) * cellH;
         const nx = u / len, ny = v / len;
         const x1 = cx - nx * L / 2, y1 = cy - ny * L / 2, x2 = cx + nx * L / 2, y2 = cy + ny * L / 2;

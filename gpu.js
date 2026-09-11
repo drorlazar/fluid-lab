@@ -18,6 +18,7 @@
     windX: 0, windY: 0, pressureIters: 40, diffuseIters: 8,
     advect: true, project: true, diffuse: true,
     sharpAdvection: true, sharpVelocity: false, conserveDye: true,
+    maxSpeed: 4,           // reference cells per step; keeps a wild stir from blowing up
   };
 
   const VERT = `#version 300 es
@@ -118,6 +119,7 @@
     velBoundary: HEAD + `
     uniform sampler2D uVel, uSolid;
     uniform vec2 uSize, uWind;
+    uniform float uMaxSpeed;
     void main() {
       vec2 v = texture(uVel, vUv).xy;
       if (texture(uSolid, vUv).r > 0.5) { o = vec4(0.0); return; }
@@ -126,6 +128,13 @@
       if (c.x < 1.0) v = wind ? uWind : vec2(0.0, v.y);
       if (c.x > uSize.x - 2.0) { if (!wind) v = vec2(0.0, v.y); }
       if (c.y < 1.0 || c.y > uSize.y - 2.0) v = vec2(v.x, 0.0);
+      if (wind) {
+        // sponge: the last stretch before the outlet eases back to the plain wind, so the wake leaves cleanly
+        float x = c.x / uSize.x;
+        v = mix(v, uWind, smoothstep(0.86, 1.0, x) * 0.2);
+      }
+      float sp = length(v);
+      if (sp > uMaxSpeed) v *= uMaxSpeed / sp;
       o = vec4(v, 0.0, 1.0);
     }`,
 
@@ -906,6 +915,7 @@
       this._tex(pr, 'uVel', this.vel.read.tex); this._tex(pr, 'uSolid', this.solidT.tex);
       gl.uniform2f(pr.u.uSize, this.simW, this.simH);
       gl.uniform2f(pr.u.uWind, P.windX * this.k, -P.windY * this.k);
+      gl.uniform1f(pr.u.uMaxSpeed, (P.maxSpeed || 6) * this.k);
       this._draw(this.vel.write); this.vel.swap();
     }
 
@@ -1187,4 +1197,5 @@
 
   GpuFluid.DEFAULTS = DEFAULTS;
   root.GpuFluid = GpuFluid;
+  root.M4 = M4;
 })(window);

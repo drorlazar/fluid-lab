@@ -111,6 +111,13 @@
         restart: 'Restart',
         tab_story: 'Story',
         tab_rules: 'Rules',
+        leapfrog: 'Leapfrog',
+        preset_campfire: 'Campfire',
+        preset_puff: 'Puff',
+        preset_wind3d: '3D wind tunnel',
+        ball: 'Ball in the way',
+        puff: 'Puff',
+        poke: 'Poke',
         fade: 'Ink fade',
 
         sharpSwirls: 'Sharp swirls',
@@ -272,6 +279,13 @@
         restart: 'מחדש',
         tab_story: 'סיפור',
         tab_rules: 'חוקים',
+        leapfrog: 'קפיצת צפרדע',
+        preset_campfire: 'מדורה',
+        preset_puff: 'נשיפה',
+        preset_wind3d: 'מנהרת רוח תלת-ממד',
+        ball: 'כדור באמצע',
+        puff: 'נשיפה',
+        poke: 'דחיפה',
         fade: 'דהיית הדיו',
 
         sharpSwirls: 'סחרורים חדים',
@@ -670,6 +684,21 @@
         },
       },
 
+      {
+        id: 'volume', emoji: '🔥',
+        title: { en: 'Light a fire in 3D', he: 'להדליק אש בתלת-ממד' },
+        invite: { en: 'This box is real 3D water. Drag with the right button to walk around the campfire, then poke the smoke and puff new clouds into it.', he: 'הקופסה הזאת היא מים אמיתיים בתלת-ממד. גררו עם הכפתור הימני כדי להסתובב סביב המדורה, ואז דחפו את העשן ונשפו לתוכו עננים חדשים.' },
+        discover: { en: 'The same three ingredients work in every direction at once. Hot smoke rises, rolls over into rings and mushrooms, and a ball in the wind leaves a swirling 3D wake.', he: 'אותם שלושה מרכיבים עובדים בכל הכיוונים בבת אחת. עשן חם עולה, מתגלגל לטבעות ופטריות, וכדור ברוח משאיר שובל מסתחרר בתלת-ממד.' },
+        science: {
+          en: ['Everything you saw on the flat pages happens here in a cube of 64 by 64 by 64 boxes. Each box hands smoke, heat and motion to six neighbours instead of four.', 'The picture is drawn by shooting a ray through the cube for every pixel and adding up the smoke it passes, a little darker where other smoke shades it from the light. Movie studios draw their smoke and explosions the same way, only with far more boxes.', 'The 3D wind tunnel is how engineers test cars, bridges and bicycle helmets before building them.'],
+          he: ['כל מה שראיתם בדפים השטוחים קורה כאן בקובייה של 64 על 64 על 64 קופסאות. כל קופסה מעבירה עשן, חום ותנועה לשש שכנות במקום לארבע.', 'התמונה מצוירת כך: לכל פיקסל יורים קרן דרך הקובייה ומחברים את כל העשן שהיא פוגשת, קצת יותר כהה במקום שעשן אחר מסתיר את האור. אולפני קולנוע מציירים עשן ופיצוצים בדיוק ככה, רק עם הרבה יותר קופסאות.', 'מנהרת הרוח התלת-ממדית היא הדרך שבה מהנדסים בודקים מכוניות, גשרים וקסדות אופניים לפני שבונים אותם.'],
+        },
+        challenge: {
+          en: ['Turn Extra swirls all the way up and watch the smoke rings form.', 'Pick 3D wind tunnel and look at the ball from behind.', 'Puff a cloud right above the fire and watch it get swallowed.'],
+          he: ['העלו את הסלסולים עד הסוף וראו איך נוצרות טבעות עשן.', 'בחרו מנהרת רוח תלת-ממד והסתכלו על הכדור מאחור.', 'נשפו ענן בדיוק מעל האש וראו איך היא בולעת אותו.'],
+        },
+        ask: { en: 'Why does smoke from a real campfire sometimes come at you no matter where you sit?', he: 'למה עשן ממדורה אמיתית לפעמים בא אליכם לא משנה איפה יושבים?' },
+      },
       {
         id: 'vortex',
         emoji: '🌀',

@@ -3,7 +3,7 @@
 import pathlib
 root = pathlib.Path(__file__).parent
 style = (root/'style.css').read_text()
-js = '\n'.join((root/f).read_text() for f in ['icons.js','fluid.js','gpu.js','content.js','chapters.js','lab.js','app.js'])
+js = '\n'.join((root/f).read_text() for f in ['icons.js','fluid.js','gpu.js','gpu3d.js','content.js','chapters.js','lab.js','app.js'])
 out = f"""<title>Fluid Lab</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&family=Rubik:wght@700;800;900&display=swap">
 <style>
