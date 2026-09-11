@@ -1,0 +1,8 @@
+.playwright-cli
+.claude
+dist
+reference
+plans
+test
+build-single.py
+README.md

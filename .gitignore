@@ -1,0 +1,8 @@
+.DS_Store
+.playwright-cli/
+.claude/
+.vercel/
+node_modules/
+dist/
+reference/
+plans/

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en" dir="ltr" data-look="glow">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#73b8ff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="description" content="Fluid Lab: a colorful ink playground about how water, smoke and wind move. For curious kids and their grown-ups.">
+  <title>Fluid Lab</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💧</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&family=Rubik:wght@700;800;900&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">💧</span>
+      <span class="name" data-ui="brand">Fluid Lab</span>
+      <span class="tag" data-ui="tagline"></span>
+    </div>
+    <nav class="chapter-map" id="chapterMap" aria-label="Chapters"></nav>
+    <div class="tools">
+      <details class="menu" id="chapterMenu"><summary class="top-btn" id="menuBtn"><span data-ui="chapters">Chapters</span></summary><div class="menu-list" id="chapterList"></div></details>
+      <button class="top-btn" id="lookBtn" type="button"></button>
+      <button class="top-btn" id="langBtn" type="button">עברית</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="lab" id="lab"></section>
+    <section class="lesson" id="lesson">
+      <div class="tabs" id="tabs">
+        <button type="button" class="tab" data-tab="story" aria-selected="true"><span class="ic">📖</span><span data-ui="tab_story">Story</span></button>
+        <button type="button" class="tab" data-tab="rules" aria-selected="false"><span class="ic">🎛️</span><span data-ui="tab_rules">Rules</span></button>
+      </div>
+      <div class="lesson-body tab-panel" id="lessonStory" aria-live="polite"></div>
+      <div class="lesson-body tab-panel rules-host" id="lessonRules" hidden></div>
+      <div class="lesson-foot" id="lessonFoot"></div>
+    </section>
+  </main>
+
+  <script src="icons.js"></script>
+  <script src="fluid.js"></script>
+  <script src="gpu.js"></script>
+  <script src="content.js"></script>
+  <script src="chapters.js"></script>
+  <script src="lab.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
