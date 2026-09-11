@@ -4,6 +4,13 @@ A colorful ink playground in twelve small discoveries, with a 3D "hills" view of
 
 Inspired by the Two Minute Papers video "I Never Thought I'd See This Happen" (https://youtu.be/mOvtumfyjCs), on OpenAI's claimed solution of the Navier-Stokes existence and smoothness problem. Transcript: `reference/video-transcript.txt`.
 
+## Play it
+
+- Live: https://fluid-lab-phi.vercel.app
+- Source: https://github.com/drorlazar/fluid-lab
+
+Works on phones and tablets too (Safari 15+, Chrome). On a phone the tools scroll sideways under the water.
+
 ## Open it
 
 Double-click `index.html`. No install, no build. Works in any modern browser with WebGL2 (Chrome, Safari 15+, Firefox, Edge). The fonts load from Google Fonts when online and fall back to system fonts offline. It remembers which chapter, language and look you were on. You can also jump to a chapter with `index.html?ch=7`.
