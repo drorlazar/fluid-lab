@@ -1,5 +1,7 @@
 # ⭐ NOVA BRAWL (נובה ברול: ארקייד הכוח)
 
+🚀 **Play Live on Vercel:** **[https://nova-brawl.vercel.app](https://nova-brawl.vercel.app)**
+
 **Brawl-Stars-inspired Bilingual (Hebrew RTL default + English LTR) Action Arcade & Interactive Math Hacker Codex** — tailored for 9-year-olds who love **Kirby, Mario, Sonic, Geometry Dash, Brawl Stars, Dragons, Dinosaurs, Spaceships, and Robots**.
 
 Built with **intrinsic math mechanics**, **zero-anxiety Bullet-Time**, **physical place-value & array manipulatives**, and a complete **12-Card Secret Gamer Strategy Deck & Smart 10×10 Multiplication Matrix** designed specifically for ADHD & ASD learners.
