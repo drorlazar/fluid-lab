@@ -1,0 +1,17 @@
+{
+  "name": "נובה ברול: ארקייד הכוח | NOVA BRAWL",
+  "short_name": "NOVA BRAWL",
+  "description": "משחק אקשן, דרקונים, דינו-רובוטים וחלליות עם ספר ההאקים הסודי למתמטיקה!",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0d1b3e",
+  "theme_color": "#0877c9",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
