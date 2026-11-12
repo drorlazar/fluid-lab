@@ -1,10 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
-import { Zap, ShieldAlert, ArrowLeft, Scissors, RefreshCw } from 'lucide-react';
 import { DifficultyTier, Language, MathProblem, generateProblem } from '../math/mathEngine';
-import { UI_STRINGS } from '../i18n/content';
-import { HeroAvatar } from '../components/HeroAvatar';
-import { HackVisorPanel } from '../components/HackVisorPanel';
+import { assets } from '../engine/spriteAtlas';
+import {
+  Particle,
+  FloatingPopup,
+  spawnBurst,
+  updateAndDrawParticles,
+  drawStrokedText,
+  drawSkewedPlate,
+  drawLaserBeam,
+  drawDiegeticCoachPointer,
+} from '../engine/vfxCanvas';
 import { sound } from '../audio/soundEngine';
 
 interface DragonStormModeProps {
@@ -17,307 +24,555 @@ interface DragonStormModeProps {
   onHackUsed: () => void;
 }
 
+interface BoostRing {
+  x: number;
+  y: number;
+  val: number;
+}
+
 export const DragonStormMode: React.FC<DragonStormModeProps> = ({
   lang,
   tier,
-  heroId,
   calmMode,
   onBack,
   onSuccess,
   onHackUsed,
 }) => {
-  const t = UI_STRINGS[lang];
   const isHe = lang === 'he';
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [wave, setWave] = useState(1);
+  const [combo, setCombo] = useState(56);
+  const [score, setScore] = useState(88400);
 
-  const [focusTable, setFocusTable] = useState<number | null>(null);
-  const [problem, setProblem] = useState<MathProblem>(() =>
-    generateProblem({ tier, forcedOp: '×', focusTable: null })
-  );
-  const [flipped, setFlipped] = useState(false);
-  const [sliceRow, setSliceRow] = useState<number | null>(null);
-  const [hackOpen, setHackOpen] = useState(false);
-  const [banner, setBanner] = useState<string | null>(null);
-  const [deflectMsg, setDeflectMsg] = useState<string | null>(null);
-  const [dragonBreathing, setDragonBreathing] = useState(false);
+  const gameRef = useRef<{
+    problem: MathProblem;
+    rows: number;
+    cols: number;
+    sliceRow: number | null;
+    rings: BoostRing[];
+    hoveredRingIdx: number;
+    dragonX: number;
+    targetDragonX: number;
+    dragonBank: number;
+    breathTimer: number;
+    shakeFrames: number;
+    waveTimer: number;
+    particles: Particle[];
+    popups: FloatingPopup[];
+  } | null>(null);
 
-  const rows = flipped ? problem.b : problem.a;
-  const cols = flipped ? problem.a : problem.b;
+  const initWave = (currentTier: DifficultyTier, isFirst = false) => {
+    const p = generateProblem({ tier: currentTier, forcedOp: '×' });
+    if (isFirst) {
+      p.a = 7;
+      p.b = 8;
+      p.answer = 56;
+    }
 
-  const nextSwarm = (customTable: number | null = focusTable) => {
-    const p = generateProblem({ tier, forcedOp: '×', focusTable: customTable });
-    setProblem(p);
-    setFlipped(false);
-    setSliceRow(null);
-    setHackOpen(false);
-    setBanner(null);
-    setDeflectMsg(null);
-    setDragonBreathing(false);
+    const rows = p.a;
+    const cols = p.b;
+    const decoys = p.choices.filter((c) => c !== p.answer).slice(0, 2);
+    const ringVals = [decoys[0] || p.answer - cols, p.answer, decoys[1] || p.answer + cols];
+    if (!isFirst) ringVals.sort(() => Math.random() - 0.5);
+
+    const rings: BoostRing[] = [
+      { x: 265, y: 635, val: ringVals[0] },
+      { x: 800, y: 605, val: ringVals[1] },
+      { x: 1320, y: 545, val: ringVals[2] },
+    ];
+
+    gameRef.current = {
+      problem: p,
+      rows,
+      cols,
+      // Auto-demonstrate the laser wing-slash on Wave 1!
+      sliceRow: isFirst ? 5 : null,
+      rings,
+      hoveredRingIdx: 1,
+      dragonX: 1080,
+      targetDragonX: 1080,
+      dragonBank: -0.18,
+      breathTimer: 0,
+      shakeFrames: 0,
+      waveTimer: 0,
+      particles: gameRef.current?.particles || [],
+      popups: gameRef.current?.popups || [],
+    };
   };
 
   useEffect(() => {
-    nextSwarm(focusTable);
-  }, [tier, focusTable]);
+    assets.loadAll();
+    initWave(tier, true);
+  }, [tier]);
 
-  const handleSmartSlice = () => {
+  const toggleWingSlash = (customRow?: number) => {
+    const g = gameRef.current;
+    if (!g) return;
     sound.playLaserSlice();
-    if (sliceRow !== null) {
-      setSliceRow(null);
-      return;
+    if (customRow !== undefined) {
+      g.sliceRow = customRow;
+    } else if (g.sliceRow !== null) {
+      g.sliceRow = null;
+    } else {
+      g.sliceRow = g.rows > 5 ? 5 : Math.max(1, Math.floor(g.rows / 2));
     }
-    // Smart pedagogical split: if rows > 5, slice at 5; else slice in half
-    const idealSplit = rows > 5 ? 5 : Math.max(1, Math.floor(rows / 2));
-    setSliceRow(idealSplit);
+    if (g.sliceRow !== null) {
+      onHackUsed();
+      spawnBurst(g.particles, 740, 290, '#ff007f', 28, 10, 'shard');
+    }
   };
 
-  const handleFlipSwarm = () => {
-    sound.playClick();
-    setFlipped((prev) => !prev);
-    setSliceRow(null);
-  };
+  const diveThroughRing = (ringIdx: number) => {
+    const g = gameRef.current;
+    if (!g || g.breathTimer > 0) return;
+    const ring = g.rings[ringIdx];
+    if (!ring) return;
 
-  const handleSelectChoice = (choice: number) => {
-    if (choice === problem.answer) {
-      setDragonBreathing(true);
+    g.hoveredRingIdx = ringIdx;
+    g.targetDragonX = ring.x;
+
+    if (ring.val === g.problem.answer) {
       sound.playLaserSlice();
-      const msg = t.correctBanners[Math.floor(Math.random() * t.correctBanners.length)];
-      setBanner(msg);
-      setDeflectMsg(null);
-      onSuccess('×', problem.a, problem.b, hackOpen || sliceRow !== null);
+      sound.playVictoryFanfare();
+      g.breathTimer = 30;
+      if (!calmMode) g.shakeFrames = 18;
+
+      // Explode every drone in the formation!
+      spawnBurst(g.particles, 680, 270, '#ffe600', 50, 15, 'shard');
+      spawnBurst(g.particles, ring.x, ring.y, '#00f5d4', 32, 11, 'circle');
+
+      g.popups.push({
+        x: 700,
+        y: 250,
+        vy: -2.4,
+        text: `🔥 SWARM OBLITERATED! ${g.problem.answer}!`,
+        color: '#ffe600',
+        scale: 1.3,
+        alpha: 1,
+        life: 0,
+      });
+
+      onSuccess('×', g.problem.a, g.problem.b, g.sliceRow !== null);
+      setCombo((c) => c + 1);
+      setScore((s) => s + 4200);
 
       if (!calmMode && typeof window !== 'undefined') {
-        confetti({
-          particleCount: 50,
-          spread: 70,
-          origin: { y: 0.6 },
-        });
+        confetti({ particleCount: 45, spread: 70, origin: { y: 0.45 } });
       }
 
       setTimeout(() => {
-        nextSwarm(focusTable);
-      }, 1150);
+        setWave((w) => w + 1);
+        initWave(tier, false);
+      }, 980);
     } else {
       sound.playShieldDeflect();
-      setDeflectMsg(t.shieldDeflectMsg);
-      if (!hackOpen) {
-        setHackOpen(true);
-        onHackUsed();
-      }
-      if (sliceRow === null && rows >= 4) {
-        setSliceRow(rows > 5 ? 5 : Math.floor(rows / 2));
+      spawnBurst(g.particles, ring.x, ring.y, '#ff4d6d', 18, 7, 'circle');
+      if (g.sliceRow === null) {
+        toggleWingSlash();
       }
     }
   };
 
-  const topRows = sliceRow !== null ? sliceRow : rows;
-  const bottomRows = sliceRow !== null ? rows - sliceRow : 0;
-  const topProduct = topRows * cols;
-  const bottomProduct = bottomRows * cols;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const g = gameRef.current;
+      if (!g) return;
+      if (e.key === ' ' || e.key === 'Shift') {
+        e.preventDefault();
+        toggleWingSlash();
+      } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+        g.hoveredRingIdx = Math.max(0, g.hoveredRingIdx - 1);
+        sound.playClick();
+      } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+        g.hoveredRingIdx = Math.min(2, g.hoveredRingIdx + 1);
+        sound.playClick();
+      } else if (e.key === 'Enter' || e.key === 'ArrowUp' || e.key === 'w') {
+        diveThroughRing(g.hoveredRingIdx);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
+  useEffect(() => {
+    let rafId = 0;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+
+    const render = (now: number) => {
+      const t = now * 0.001;
+      const g = gameRef.current;
+      if (!g) {
+        rafId = requestAnimationFrame(render);
+        return;
+      }
+
+      g.waveTimer += 1 / 60;
+      const dx = g.targetDragonX - g.dragonX;
+      g.dragonX += dx * 0.14;
+      g.dragonBank = -0.18 + Math.max(-0.22, Math.min(0.22, dx * 0.0018));
+
+      ctx.save();
+      if (g.shakeFrames > 0 && !calmMode) {
+        g.shakeFrames--;
+        ctx.translate(
+          (Math.random() - 0.5) * g.shakeFrames * 1.6,
+          (Math.random() - 0.5) * g.shakeFrames * 1.6
+        );
+      }
+
+      // 1. Painted Volcanic Canyon Background
+      const bg = assets.getBg('dragon');
+      if (bg) {
+        ctx.drawImage(bg, 0, 0, 1600, 900);
+      } else {
+        ctx.fillStyle = '#1c0b19';
+        ctx.fillRect(0, 0, 1600, 900);
+      }
+
+      // 2. Living Geometric Formation of Glowing Mecha-Drones (tilted in 2.5D perspective like Frame 4!)
+      const { rows, cols, sliceRow } = g;
+      const gridOriginX = 460;
+      const gridOriginY = 145;
+      const cellW = Math.min(54, Math.floor(420 / cols));
+      const cellH = Math.min(44, Math.floor(310 / rows));
+
+      for (let r = 0; r < rows; r++) {
+        const isBottomSlice = sliceRow !== null && r >= sliceRow;
+        const sliceGap = isBottomSlice ? 34 : 0;
+        for (let c = 0; c < cols; c++) {
+          const fiveGap = c >= 5 ? 14 : 0;
+          const x = gridOriginX + c * cellW + fiveGap + r * 4;
+          const y =
+            gridOriginY +
+            r * cellH +
+            sliceGap -
+            c * 2.5 +
+            (calmMode ? 0 : Math.sin(t * 5 + r + c) * 2.5);
+
+          const droneColor =
+            sliceRow === null
+              ? '#fbbf24'
+              : isBottomSlice
+              ? '#00f5d4'
+              : '#ffd60a';
+
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.strokeStyle = droneColor;
+          ctx.fillStyle = isBottomSlice ? 'rgba(0, 245, 212, 0.25)' : 'rgba(255, 214, 10, 0.25)';
+          ctx.lineWidth = 2.5;
+          ctx.shadowColor = droneColor;
+          ctx.shadowBlur = 10;
+
+          // Draw Mecha-Hornet Drone Silhouette (wings + core)
+          ctx.beginPath();
+          ctx.moveTo(-14, -8);
+          ctx.lineTo(0, -2);
+          ctx.lineTo(14, -8);
+          ctx.lineTo(8, 6);
+          ctx.lineTo(0, 12);
+          ctx.lineTo(-8, 6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.arc(0, 1, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // 3. Blazing Magenta-Gold Laser Wing-Slash Line & Callout Badges (Just like Frame 4!)
+      if (sliceRow !== null) {
+        const slashY = gridOriginY + sliceRow * cellH + 4;
+        drawLaserBeam(
+          ctx,
+          gridOriginX - 110,
+          slashY + 42,
+          gridOriginX + cols * cellW + 90,
+          slashY - 22,
+          '#ff007f',
+          '#fff36b',
+          22
+        );
+
+        const topRows = sliceRow;
+        const botRows = rows - sliceRow;
+        const topProd = topRows * cols;
+        const botProd = botRows * cols;
+
+        // Top Gold Drones Callout
+        const calloutX = gridOriginX + cols * cellW + 175;
+        drawSkewedPlate(
+          ctx,
+          calloutX,
+          gridOriginY + 45,
+          230,
+          78,
+          'rgba(38, 28, 6, 0.92)',
+          '#ffe600',
+          4,
+          -0.12,
+          '#ffe600'
+        );
+        drawStrokedText(
+          ctx,
+          `${topRows} × ${cols} = ${topProd}`,
+          calloutX,
+          gridOriginY + 35,
+          32,
+          '#ffe600',
+          '#000',
+          6
+        );
+        drawStrokedText(
+          ctx,
+          'GOLD DRONES',
+          calloutX,
+          gridOriginY + 64,
+          16,
+          '#fef08a',
+          '#000',
+          4
+        );
+
+        // Bottom Cyan Drones Callout
+        drawSkewedPlate(
+          ctx,
+          calloutX + 15,
+          slashY + 60,
+          230,
+          78,
+          'rgba(6, 32, 48, 0.92)',
+          '#00f5d4',
+          4,
+          -0.12,
+          '#00f5d4'
+        );
+        drawStrokedText(
+          ctx,
+          `${botRows} × ${cols} = ${botProd}`,
+          calloutX + 15,
+          slashY + 50,
+          32,
+          '#00f5d4',
+          '#000',
+          6
+        );
+        drawStrokedText(
+          ctx,
+          'CYAN DRONES',
+          calloutX + 15,
+          slashY + 79,
+          16,
+          '#a5f3fc',
+          '#000',
+          4
+        );
+      }
+
+      // 4. Three Glowing Circular Boost Rings in the Sky (48, 56, 64 — Just like Frame 4!)
+      g.rings.forEach((ring, idx) => {
+        const isHovered = g.hoveredRingIdx === idx;
+        const ry = ring.y + (calmMode ? 0 : Math.sin(t * 3 + idx) * 6);
+
+        ctx.save();
+        ctx.translate(ring.x, ry);
+
+        // Blazing Fire Ring Aura
+        ctx.strokeStyle = isHovered ? '#ffe600' : 'rgba(255, 255, 255, 0.78)';
+        ctx.fillStyle = isHovered ? 'rgba(255, 190, 11, 0.25)' : 'rgba(15, 23, 42, 0.45)';
+        ctx.lineWidth = isHovered ? 12 : 6;
+        ctx.shadowColor = isHovered ? '#ff9f1c' : '#ffffff';
+        ctx.shadowBlur = isHovered ? 30 : 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, isHovered ? 88 : 78, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        drawStrokedText(
+          ctx,
+          String(ring.val),
+          0,
+          4,
+          isHovered ? 62 : 52,
+          isHovered ? '#ffe600' : '#ffffff',
+          '#000',
+          10
+        );
+        ctx.restore();
+      });
+
+      // 5. Super-Nova Dragon Fire Breath when Ring is triggered!
+      if (g.breathTimer > 0) {
+        g.breathTimer--;
+        const activeRing = g.rings[g.hoveredRingIdx] || g.rings[1];
+        drawLaserBeam(
+          ctx,
+          g.dragonX - 60,
+          610,
+          gridOriginX + (cols * cellW) / 2,
+          gridOriginY + (rows * cellH) / 2,
+          '#ff007f',
+          '#ffe600',
+          52
+        );
+        drawLaserBeam(
+          ctx,
+          g.dragonX - 60,
+          610,
+          activeRing.x,
+          activeRing.y,
+          '#ffe600',
+          '#ffffff',
+          32
+        );
+      }
+
+      // 6. Painted Cyber-Dragon Sprite (`dracox`) Banking Dynamically over the Lava Canyon!
+      const dragonSpr = assets.getSprite('dracox');
+      const dragonBob = calmMode ? 0 : Math.sin(t * 4) * 9;
+      ctx.save();
+      ctx.translate(g.dragonX, 650 + dragonBob);
+      ctx.rotate(g.dragonBank);
+      if (dragonSpr) {
+        ctx.drawImage(dragonSpr, -260, -220, 520, 440);
+      }
+      ctx.restore();
+
+      // 7. DIEGETIC VISUAL COACH ("Show, Don't Tell")
+      const correctRing = g.rings.find((r) => r.val === g.problem.answer);
+      if ((wave === 1 || g.waveTimer > 4.5) && g.breathTimer === 0 && correctRing) {
+        if (g.sliceRow === null && g.waveTimer < 3.2) {
+          drawDiegeticCoachPointer(
+            ctx,
+            gridOriginX - 40,
+            gridOriginY + 140,
+            gridOriginX + 340,
+            gridOriginY + 120,
+            t,
+            '#ff007f'
+          );
+        } else {
+          drawDiegeticCoachPointer(
+            ctx,
+            gridOriginX + 200,
+            gridOriginY + 140,
+            correctRing.x,
+            correctRing.y,
+            t,
+            '#ffe600'
+          );
+        }
+      }
+
+      // 8. Top Center Combo Counter (Just like Frame 4!)
+      drawStrokedText(ctx, `x${combo}`, 800, 48, 56, '#ffe600', '#000', 9);
+      drawStrokedText(ctx, 'COMBO', 800, 88, 22, '#ffffff', '#000', 5);
+
+      updateAndDrawParticles(ctx, g.particles, g.popups);
+
+      ctx.restore();
+      rafId = requestAnimationFrame(render);
+    };
+
+    rafId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(rafId);
+  }, [calmMode, combo, tier, wave]);
+
+  const getCoords = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * 1600,
+      y: ((e.clientY - rect.top) / rect.height) * 900,
+    };
+  };
+
+  const handleMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const g = gameRef.current;
+    if (!g) return;
+    const { x, y } = getCoords(e);
+    g.targetDragonX = Math.max(420, Math.min(1320, x + 160));
+
+    if (y > 440) {
+      let best = g.hoveredRingIdx;
+      let minD = 9999;
+      g.rings.forEach((r, idx) => {
+        const d = Math.hypot(x - r.x, y - r.y);
+        if (d < minD) {
+          minD = d;
+          best = idx;
+        }
+      });
+      g.hoveredRingIdx = best;
+    }
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const g = gameRef.current;
+    if (!g) return;
+    const { x, y } = getCoords(e);
+
+    // Did they click/swipe on the Drone Formation Grid to slice it?
+    if (x > 360 && x < 1050 && y > 110 && y < 460) {
+      const clickedRow = Math.max(
+        1,
+        Math.min(g.rows - 1, Math.round((y - 145) / Math.min(44, Math.floor(310 / g.rows))))
+      );
+      toggleWingSlash(clickedRow);
+      return;
+    }
+
+    // Did they click one of the 3 Boost Rings?
+    for (let i = 0; i < g.rings.length; i++) {
+      const r = g.rings[i];
+      if (Math.hypot(x - r.x, y - r.y) < 115) {
+        diveThroughRing(i);
+        return;
+      }
+    }
+
+    diveThroughRing(g.hoveredRingIdx);
+  };
 
   return (
-    <div className="mode-screen dragon-theme">
-      {/* Top Bar */}
-      <div className="mode-topbar">
-        <button type="button" className="slab back-btn" onClick={onBack}>
-          <ArrowLeft size={20} className="gi-back" />
-          <span>{t.backToLobby}</span>
-        </button>
+    <div className="fullscreen-world-Wrapper">
+      <canvas
+        ref={canvasRef}
+        width={1600}
+        height={900}
+        className="fullscreen-game-canvas"
+        onMouseMove={handleMove}
+        onClick={handleClick}
+      />
 
-        <div className="mode-title-pill magenta-pill">
-          <span>🐉 {t.worlds.dragon.name}</span>
+      <button type="button" className="brawl-back-corner" onClick={onBack} aria-label="Back">
+        ◀
+      </button>
+
+      <div className="world-hud-top-left" dir="ltr">
+        <div className="hp-bar-frame">
+          <span className="hp-tag">❤️</span>
+          <div className="hp-fill">DRACO-X</div>
         </div>
-
-        <button
-          type="button"
-          className={`slab hack-trigger-btn ${hackOpen ? 'active' : 'primary'}`}
-          onClick={() => {
-            if (!hackOpen) onHackUsed();
-            setHackOpen(true);
-          }}
-        >
-          <Zap size={20} />
-          <span>{t.hackButton}</span>
-        </button>
+        <div className="space-stat-line">SCORE: {score.toLocaleString()}</div>
       </div>
 
-      {/* Multiplication Table Focus Filter Bar */}
-      <div className="table-filter-bar">
-        <span className="filter-label">
-          {isHe ? '🎯 מיקוד כפולה:' : '🎯 Focus Table:'}
-        </span>
-        <div className="table-pills-row" dir="ltr">
-          <button
-            type="button"
-            className={`slab mini-table-btn ${focusTable === null ? 'primary' : ''}`}
-            onClick={() => setFocusTable(null)}
-          >
-            ALL
-          </button>
-          {[2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-            <button
-              key={num}
-              type="button"
-              className={`slab mini-table-btn ${focusTable === num ? 'primary' : ''}`}
-              onClick={() => setFocusTable(num)}
-            >
-              ×{num}
-            </button>
-          ))}
-        </div>
+      <div className="world-hud-bottom-bar" dir="ltr">
+        LAVA CANYON | WAVE {wave}
       </div>
 
-      {/* Dragon vs Living Drone Swarm Stage */}
-      <div className="battle-arena dragon-arena">
-        <div className="fighter-pod hero-pod">
-          <HeroAvatar
-            heroId={heroId}
-            size={104}
-            action={dragonBreathing ? 'attack' : 'idle'}
-          />
-          <div className="dragon-tools-stack">
-            <button type="button" className="slab dragon-tool-btn" onClick={handleSmartSlice}>
-              <Scissors size={18} />
-              <span>
-                {sliceRow !== null
-                  ? isHe
-                    ? 'בטל חיתוך נחיל'
-                    : 'Merge Swarm'
-                  : isHe
-                  ? '⚔️ חתוך נחיל ל-2 חלקים קלים!'
-                  : '⚔️ Slice Swarm into 2 Easy Parts!'}
-              </span>
-            </button>
-            <button type="button" className="slab dragon-tool-btn" onClick={handleFlipSwarm}>
-              <RefreshCw size={18} />
-              <span>
-                {isHe
-                  ? `🔄 סובב מראה (${rows}×${cols} ➔ ${cols}×${rows})`
-                  : `🔄 Mirror Flip (${rows}×${cols} ➔ ${cols}×${rows})`}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Center Living Drone Matrix */}
-        <div className="drone-matrix-card">
-          {dragonBreathing && <div className="mega-laser-beam fire-beam" />}
-          <div className="drone-matrix-header">
-            <div className="shield-equation" dir="ltr">
-              {rows} <span className="op-mult">×</span> {cols} = ?
-            </div>
-            {sliceRow !== null && (
-              <div className="slice-Readout-pill" dir="ltr">
-                <span className="gold-txt">
-                  ({topRows}×{cols} = {topProduct})
-                </span>{' '}
-                +{' '}
-                <span className="cyan-txt">
-                  ({bottomRows}×{cols} = {bottomProduct})
-                </span>
-              </div>
-            )}
-          </div>
-
-          <p className="drone-matrix-hint">
-            {isHe
-              ? '💡 לחץ בין שתי שורות של רחפנים כדי לחתוך את הנחיל בטופר לייזר!'
-              : '💡 Click between any two drone rows to slice the swarm with your laser claw!'}
-          </p>
-
-          <div className="interactive-drone-grid" dir="ltr">
-            {Array.from({ length: rows }).map((_, rIdx) => {
-              const isBottomPart = sliceRow !== null && rIdx >= sliceRow;
-              const isSliceBoundary = sliceRow !== null && rIdx === sliceRow;
-              return (
-                <React.Fragment key={rIdx}>
-                  {isSliceBoundary && (
-                    <div className="laser-slice-divider">
-                      <span>⚡ LASER CLAW SPLIT ⚡</span>
-                    </div>
-                  )}
-                  <div
-                    className={`drone-formation-row ${
-                      sliceRow === null
-                        ? 'row-normal'
-                        : isBottomPart
-                        ? 'row-sliced-cyan'
-                        : 'row-sliced-gold'
-                    }`}
-                    onClick={() => {
-                      if (rIdx > 0) {
-                        sound.playLaserSlice();
-                        setSliceRow(sliceRow === rIdx ? null : rIdx);
-                      }
-                    }}
-                    title={
-                      rIdx > 0
-                        ? isHe
-                          ? `לחץ לחיתוך כאן (${rIdx} שורות למעלה, ${rows - rIdx} למטה)`
-                          : `Click to slice here (${rIdx} rows top, ${rows - rIdx} bottom)`
-                        : undefined
-                    }
-                  >
-                    <span className="row-index-badge">{rIdx + 1}</span>
-                    <div className="drone-cells-wrap">
-                      {Array.from({ length: cols }).map((__, cIdx) => (
-                        <span
-                          key={cIdx}
-                          className={`cyber-drone-unit ${
-                            cIdx === 4 ? 'fifth-marker' : ''
-                          }`}
-                        >
-                          👾
-                        </span>
-                      ))}
-                    </div>
-                    <span className="row-running-total">{(rIdx + 1) * cols}</span>
-                  </div>
-                </React.Fragment>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {banner && <div className="victory-toast-banner">{banner}</div>}
-      {deflectMsg && (
-        <div className="deflect-alert-banner">
-          <ShieldAlert size={22} />
-          <span>{deflectMsg}</span>
-        </div>
-      )}
-
-      {/* Fireball Barrage Target Selection */}
-      <div className="control-deck-card">
-        <div className="direct-lock-section">
-          <span className="direct-lock-label">
-            {isHe
-              ? `🔥 שגר מטח כדורי אש בעוצמה המדויקת (${rows} × ${cols}):`
-              : `🔥 Fire Dragon Barrage with Exact Swarm Power (${rows} × ${cols}):`}
-          </span>
-          <div className="direct-choices-grid" dir="ltr">
-            {problem.choices.map((choice) => (
-              <button
-                key={choice}
-                type="button"
-                className="slab choice-slab-btn fire-choice"
-                onClick={() => handleSelectChoice(choice)}
-              >
-                🔥 {choice}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {hackOpen && (
-        <HackVisorPanel
-          hack={problem.hack}
-          lang={lang}
-          a={problem.a}
-          b={problem.b}
-          answer={problem.answer}
-        />
-      )}
+      <button
+        type="button"
+        className="brawl-action-fab magenta-fab"
+        onClick={() => toggleWingSlash()}
+      >
+        ⚔️ SLICE SWARM {isHe ? 'חיתוך לייזר' : ''}
+      </button>
     </div>
   );
 };

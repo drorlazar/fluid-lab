@@ -1,21 +1,15 @@
-import React, { useState } from 'react';
-import {
-  Trophy,
-  Gem,
-  Flame,
-  BookOpen,
-  Users,
-  Volume2,
-  VolumeX,
-  Sparkles,
-  Gift,
-  Globe,
-  Play,
-  Zap,
-} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import confetti from 'canvas-confetti';
 import { useGameStore } from './state/useGameStore';
-import { HEROES, UI_STRINGS } from './i18n/content';
-import { HeroAvatar } from './components/HeroAvatar';
+import { HEROES } from './i18n/content';
+import { assets, SpriteId } from './engine/spriteAtlas';
+import {
+  Particle,
+  FloatingPopup,
+  spawnBurst,
+  updateAndDrawParticles,
+  drawStrokedText,
+} from './engine/vfxCanvas';
 import { DinoForgeMode } from './modes/DinoForgeMode';
 import { SpaceSlicerMode } from './modes/SpaceSlicerMode';
 import { DragonStormMode } from './modes/DragonStormMode';
@@ -24,14 +18,22 @@ import { HackerCodexModal } from './components/HackerCodexModal';
 import { HeroGarageModal } from './components/HeroGarageModal';
 import { sound } from './audio/soundEngine';
 
-type ActiveScreen = 'lobby' | 'dino' | 'space' | 'dragon' | 'dash';
+type WorldId = 'dino' | 'space' | 'dragon' | 'dash';
+
+const HERO_SPRITE_MAP: Record<string, SpriteId> = {
+  ignis: 'ignis',
+  rexbot: 'mecharex',
+  novakirb: 'kirb',
+  voltdash: 'viper',
+  titanprime: 'tricera',
+  astrodrake: 'dracox',
+};
 
 export const App: React.FC = () => {
   const {
     state,
     toggleLang,
     setTier,
-    toggleCalmMode,
     toggleMute,
     selectHero,
     recordSuccess,
@@ -39,405 +41,368 @@ export const App: React.FC = () => {
     openBrawlBox,
   } = useGameStore();
 
-  const [screen, setScreen] = useState<ActiveScreen>('lobby');
-  const [codexOpen, setCodexOpen] = useState<boolean>(false);
-  const [garageOpen, setGarageOpen] = useState<boolean>(false);
+  const [activeWorld, setActiveWorld] = useState<WorldId | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const w = new URLSearchParams(window.location.search).get('world');
+    if (w === 'dino' || w === 'space' || w === 'dragon' || w === 'dash') return w;
+    return null;
+  });
+  const [selectedBlade, setSelectedBlade] = useState<WorldId>('dino');
+  const [codexOpen, setCodexOpen] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('world') === 'hacklab';
+  });
+  const [garageOpen, setGarageOpen] = useState(false);
 
-  const t = UI_STRINGS[state.lang];
+  const lobbyCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lobbyVfxRef = useRef<{ particles: Particle[]; popups: FloatingPopup[] }>({
+    particles: [],
+    popups: [],
+  });
+
   const isHe = state.lang === 'he';
-  const currentHero =
-    HEROES.find((h) => h.id === state.selectedHeroId) || HEROES[0];
+  const currentHero = HEROES.find((h) => h.id === state.selectedHeroId) || HEROES[0];
 
-  // Find next locked hero for Trophy Road progress bar
-  const nextLockedHero = HEROES.find((h) => h.unlockTrophies > state.trophies);
-  const roadTarget = nextLockedHero ? nextLockedHero.unlockTrophies : 500;
-  const roadPct = Math.min(100, Math.round((state.trophies / roadTarget) * 100));
+  useEffect(() => {
+    assets.loadAll();
+  }, []);
 
+  // 60fps Animated Brawl Lobby Pedestal Canvas (Matching Frame 1!)
+  useEffect(() => {
+    if (activeWorld !== null) return;
+    let rafId = 0;
+    const canvas = lobbyCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d')!;
+
+    const render = (now: number) => {
+      const t = now * 0.001;
+
+      // 1. Painted Brawl Pedestal Background
+      const bg = assets.getBg('lobby');
+      if (bg) {
+        ctx.drawImage(bg, 0, 0, 1600, 900);
+      } else {
+        ctx.fillStyle = '#071436';
+        ctx.fillRect(0, 0, 1600, 900);
+      }
+
+      // 2. Glowing Pedestal Rings & Rising Energy Motes
+      ctx.save();
+      ctx.translate(770, 745);
+      ctx.strokeStyle = '#00f5d4';
+      ctx.lineWidth = 6;
+      ctx.shadowColor = '#00f5d4';
+      ctx.shadowBlur = 24;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 235 + Math.sin(t * 3) * 6, 62, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+
+      // 3. Painted Hero Sprite Breathing on the Center Pedestal
+      const sprId = HERO_SPRITE_MAP[currentHero.id] || 'ignis';
+      const spr = assets.getSprite(sprId);
+      const bobY = state.calmMode ? 0 : Math.sin(t * 3.2) * 10;
+
+      ctx.save();
+      ctx.translate(770, 465 + bobY);
+      if (spr) {
+        ctx.drawImage(spr, -255, -255, 510, 510);
+      }
+      ctx.restore();
+
+      // 4. Hero Nameplate on the Pedestal Base (Just like Frame 1!)
+      drawStrokedText(
+        ctx,
+        isHe ? currentHero.nameHe : currentHero.nameEn,
+        770,
+        812,
+        54,
+        '#ffffff',
+        '#000000',
+        11
+      );
+
+      updateAndDrawParticles(
+        ctx,
+        lobbyVfxRef.current.particles,
+        lobbyVfxRef.current.popups
+      );
+
+      rafId = requestAnimationFrame(render);
+    };
+
+    rafId = requestAnimationFrame(render);
+    return () => cancelAnimationFrame(rafId);
+  }, [activeWorld, currentHero, isHe, state.calmMode]);
+
+  const handleTriggerMegaBox = () => {
+    sound.playVictoryFanfare();
+    openBrawlBox();
+    spawnBurst(lobbyVfxRef.current.particles, 770, 480, '#ffe600', 48, 14, 'shard');
+    spawnBurst(lobbyVfxRef.current.particles, 770, 480, '#00f5d4', 32, 10, 'circle');
+    lobbyVfxRef.current.popups.push({
+      x: 770,
+      y: 380,
+      vy: -2.2,
+      text: '🎁 MEGA BOX! +75 💎 +25 🏆',
+      color: '#ffe600',
+      scale: 1.3,
+      alpha: 1,
+      life: 0,
+    });
+    if (!state.calmMode && typeof window !== 'undefined') {
+      confetti({ particleCount: 55, spread: 75, origin: { y: 0.55 } });
+    }
+  };
+
+  const handleCycleTier = () => {
+    const order: Array<'rookie' | 'pro' | 'master'> = ['rookie', 'pro', 'master'];
+    const next = order[(order.indexOf(state.tier as 'rookie' | 'pro' | 'master') + 1) % order.length];
+    setTier(next);
+  };
+
+  // Render Active Full-Viewport World
+  if (activeWorld === 'dino') {
+    return (
+      <DinoForgeMode
+        lang={state.lang}
+        tier={state.tier}
+        heroId={state.selectedHeroId}
+        calmMode={state.calmMode}
+        onBack={() => setActiveWorld(null)}
+        onSuccess={recordSuccess}
+        onHackUsed={recordHackBonus}
+      />
+    );
+  }
+
+  if (activeWorld === 'space') {
+    return (
+      <SpaceSlicerMode
+        lang={state.lang}
+        tier={state.tier}
+        heroId={state.selectedHeroId}
+        calmMode={state.calmMode}
+        onBack={() => setActiveWorld(null)}
+        onSuccess={recordSuccess}
+        onHackUsed={recordHackBonus}
+      />
+    );
+  }
+
+  if (activeWorld === 'dragon') {
+    return (
+      <DragonStormMode
+        lang={state.lang}
+        tier={state.tier}
+        heroId={state.selectedHeroId}
+        calmMode={state.calmMode}
+        onBack={() => setActiveWorld(null)}
+        onSuccess={recordSuccess}
+        onHackUsed={recordHackBonus}
+      />
+    );
+  }
+
+  if (activeWorld === 'dash') {
+    return (
+      <NeonDashMode
+        lang={state.lang}
+        tier={state.tier}
+        heroId={state.selectedHeroId}
+        calmMode={state.calmMode}
+        onBack={() => setActiveWorld(null)}
+        onSuccess={recordSuccess}
+        onHackUsed={recordHackBonus}
+      />
+    );
+  }
+
+  // BRAWL STARS 3D PEDESTAL LOBBY (Exact Match to Frame 1!)
   return (
-    <div
-      className={`nova-app-shell ${state.calmMode ? 'calm-mode' : ''}`}
-      dir={isHe ? 'rtl' : 'ltr'}
-      lang={state.lang}
-    >
-      {/* BRAWL STARS EXTRUDED TOPBAR */}
-      <header className="brawl-topbar">
-        <div
-          className="brand-cluster"
+    <div className="fullscreen-world-Wrapper lobby-wrapper" dir="ltr">
+      <canvas
+        ref={lobbyCanvasRef}
+        width={1600}
+        height={900}
+        className="fullscreen-game-canvas"
+        onClick={() => {
+          // Clicking the center pedestal cycles heroes with a burst!
+          const idx = HEROES.findIndex((h) => h.id === currentHero.id);
+          const nextHero = HEROES[(idx + 1) % HEROES.length];
+          selectHero(nextHero.id);
+          spawnBurst(lobbyVfxRef.current.particles, 770, 520, '#00f5d4', 24, 9, 'circle');
+        }}
+      />
+
+      {/* TOP BAR: Skewed Currency Counters + Compact Utility Pills */}
+      <div className="lobby-top-bar">
+        <div className="lobby-util-left">
+          <button
+            type="button"
+            className="brawl-util-pill"
+            onClick={toggleLang}
+            title="Switch Language"
+          >
+            🌐 {isHe ? 'EN' : 'עב'}
+          </button>
+          <button
+            type="button"
+            className="brawl-util-pill"
+            onClick={handleCycleTier}
+            title="Difficulty Tier"
+          >
+            {state.tier === 'rookie'
+              ? '🌱 LVL 1'
+              : state.tier === 'pro'
+              ? '⚡ LVL 2'
+              : '🔥 MAX'}
+          </button>
+          <button
+            type="button"
+            className="brawl-util-pill"
+            onClick={toggleMute}
+            title="Sound"
+          >
+            {state.muted ? '🔇' : '🔊'}
+          </button>
+        </div>
+
+        <div className="lobby-currencies-right">
+          <div className="brawl-stat-skew">
+            <span className="stat-ic">🏆</span>
+            <span>{state.trophies.toLocaleString()}</span>
+          </div>
+          <div className="brawl-stat-skew">
+            <span className="stat-ic">💎</span>
+            <span>{state.gems.toLocaleString()}</span>
+          </div>
+          <div className="brawl-stat-skew">
+            <span className="stat-ic">🔥</span>
+            <span>x{Math.max(1, state.streak)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* LEFT DOCK: 3 Iconic Skewed Brawl Stars Buttons (Exact Match to Frame 1!) */}
+      <div className="lobby-left-dock">
+        <button
+          type="button"
+          className="brawl-dock-btn green-dock"
           onClick={() => {
             sound.playClick();
-            setScreen('lobby');
+            setGarageOpen(true);
           }}
-          role="button"
-          tabIndex={0}
         >
-          <span className="brand-star-icon">⭐</span>
-          <div className="brand-text-stack">
-            <span className="brand-main-name">{t.brandTitle}</span>
-            <span className="brand-sub-tag">{t.brandSubtitle}</span>
+          <span className="dock-icon">🦖</span>
+          <div className="dock-labels">
+            <span className="dock-en">BRAWLERS</span>
+            <span className="dock-he">ברולרים</span>
           </div>
-        </div>
+        </button>
 
-        {/* Currency & Streak Pills */}
-        <div className="hud-stats-cluster" dir="ltr">
-          <div className="stat-pill trophy-pill" title={t.trophies}>
-            <Trophy size={18} />
-            <span>{state.trophies}</span>
+        <button
+          type="button"
+          className="brawl-dock-btn blue-dock"
+          onClick={() => {
+            sound.playHackActivate();
+            setCodexOpen(true);
+          }}
+        >
+          <span className="dock-icon">🛠️</span>
+          <div className="dock-labels">
+            <span className="dock-en">HACK LAB</span>
+            <span className="dock-he">האקים</span>
           </div>
-          <div className="stat-pill gem-pill" title={t.gems}>
-            <Gem size={18} />
-            <span>{state.gems}</span>
+        </button>
+
+        <button
+          type="button"
+          className="brawl-dock-btn purple-dock"
+          onClick={handleTriggerMegaBox}
+        >
+          <span className="dock-icon">🎁</span>
+          <div className="dock-labels">
+            <span className="dock-en">MEGA BOX</span>
+            <span className="dock-he">תיבת מגה!</span>
           </div>
-          <div className="stat-pill streak-pill" title={t.streak}>
-            <Flame size={18} />
-            <span>×{state.streak}</span>
-          </div>
-        </div>
+        </button>
+      </div>
 
-        {/* Top Action Slabs */}
-        <div className="topbar-actions">
-          <button
-            type="button"
-            className="slab primary codex-top-btn"
-            onClick={() => {
-              sound.playHackActivate();
-              setCodexOpen(true);
-            }}
-          >
-            <BookOpen size={19} />
-            <span>{t.codexBtn}</span>
-          </button>
+      {/* RIGHT DOCK: 4 Skewed World Selector Blades + Giant Gold BRAWL! Button */}
+      <div className="lobby-right-dock">
+        <button
+          type="button"
+          className={`brawl-world-blade blade-dino ${
+            selectedBlade === 'dino' ? 'selected' : ''
+          }`}
+          onClick={() => {
+            sound.playClick();
+            if (selectedBlade === 'dino') setActiveWorld('dino');
+            else setSelectedBlade('dino');
+          }}
+        >
+          <span>{isHe ? '🦖 זירת הדינו  |  Mecha-Dino Arena' : 'Mecha-Dino Arena'}</span>
+        </button>
 
-          <button
-            type="button"
-            className="slab garage-top-btn"
-            onClick={() => {
-              sound.playClick();
-              setGarageOpen(true);
-            }}
-          >
-            <Users size={19} />
-            <span>{t.heroesBtn}</span>
-            {state.brawlBoxes > 0 && (
-              <span className="box-badge-dot">{state.brawlBoxes}</span>
-            )}
-          </button>
+        <button
+          type="button"
+          className={`brawl-world-blade blade-space ${
+            selectedBlade === 'space' ? 'selected' : ''
+          }`}
+          onClick={() => {
+            sound.playClick();
+            if (selectedBlade === 'space') setActiveWorld('space');
+            else setSelectedBlade('space');
+          }}
+        >
+          <span>{isHe ? '🚀 צייד החלל  |  Space Boss Slicer' : 'Space Boss Slicer'}</span>
+        </button>
 
-          <button
-            type="button"
-            className={`slab icon-top-btn ${state.calmMode ? 'calm-active' : ''}`}
-            onClick={toggleCalmMode}
-            title={state.calmMode ? t.calmModeOn : t.calmModeOff}
-          >
-            <Sparkles size={18} />
-            <span className="hide-mobile">
-              {state.calmMode ? t.calmModeOn : t.calmModeOff}
-            </span>
-          </button>
+        <button
+          type="button"
+          className={`brawl-world-blade blade-dragon ${
+            selectedBlade === 'dragon' ? 'selected' : ''
+          }`}
+          onClick={() => {
+            sound.playClick();
+            if (selectedBlade === 'dragon') setActiveWorld('dragon');
+            else setSelectedBlade('dragon');
+          }}
+        >
+          <span>{isHe ? '🐉 סופת הדרקון  |  Dragon Swarm' : 'Dragon Swarm'}</span>
+        </button>
 
-          <button
-            type="button"
-            className="slab icon-top-btn"
-            onClick={toggleMute}
-            aria-label="Toggle Sound"
-          >
-            {state.muted ? <VolumeX size={19} /> : <Volume2 size={19} />}
-          </button>
+        <button
+          type="button"
+          className={`brawl-world-blade blade-dash ${
+            selectedBlade === 'dash' ? 'selected' : ''
+          }`}
+          onClick={() => {
+            sound.playClick();
+            if (selectedBlade === 'dash') setActiveWorld('dash');
+            else setSelectedBlade('dash');
+          }}
+        >
+          <span>{isHe ? '⚡ ניאון דאש  |  Geometry Overdrive' : 'Geometry Overdrive'}</span>
+        </button>
 
-          <button
-            type="button"
-            className="slab lang-top-btn"
-            onClick={toggleLang}
-          >
-            <Globe size={18} />
-            <span>{t.langSwitch}</span>
-          </button>
-        </div>
-      </header>
+        {/* GIANT GOLDEN BRAWL! / לקרב! CTA */}
+        <button
+          type="button"
+          className="brawl-giant-play-btn"
+          onClick={() => {
+            sound.playVictoryFanfare();
+            setActiveWorld(selectedBlade);
+          }}
+        >
+          <span className="play-en">BRAWL!</span>
+          <span className="play-he">לקרב!</span>
+        </button>
+      </div>
 
-      {/* MAIN STAGE */}
-      <main className="nova-main-stage">
-        {screen === 'lobby' && (
-          <div className="brawl-lobby-grid">
-            {/* Hero Spotlight Side Panel */}
-            <aside className="hero-spotlight-panel">
-              <div className="spotlight-header-tag">
-                {isHe ? 'הברולר שלך לקרב' : 'ACTIVE BRAWLER'}
-              </div>
-
-              <div
-                className="spotlight-avatar-stage"
-                onClick={() => {
-                  sound.playClick();
-                  setGarageOpen(true);
-                }}
-              >
-                <HeroAvatar heroId={currentHero.id} size={136} action="idle" />
-              </div>
-
-              <h2 className="spotlight-hero-name">
-                { currentHero.iconEmoji }{' '}
-                {isHe ? currentHero.nameHe : currentHero.nameEn}
-              </h2>
-              <p className="spotlight-hero-title">
-                {isHe ? currentHero.titleHe : currentHero.titleEn}
-              </p>
-              <div className="spotlight-power-box">
-                ⚡ {isHe ? currentHero.powerHe : currentHero.powerEn}
-              </div>
-
-              {/* Trophy Road Progress */}
-              <div className="trophy-road-box">
-                <div className="road-label-row">
-                  <span>
-                    🏆 {isHe ? 'מסלול הגביעים:' : 'Trophy Road:'}
-                  </span>
-                  <strong dir="ltr">
-                    {state.trophies} / {roadTarget}
-                  </strong>
-                </div>
-                <div className="road-bar-outer">
-                  <div
-                    className="road-bar-fill"
-                    style={{ width: `${roadPct}%` }}
-                  />
-                </div>
-                {nextLockedHero && (
-                  <span className="road-next-hint">
-                    {isHe
-                      ? `הגיבור הבא: ${nextLockedHero.nameHe} ${nextLockedHero.iconEmoji}`
-                      : `Next Hero: ${nextLockedHero.nameEn} ${nextLockedHero.iconEmoji}`}
-                  </span>
-                )}
-              </div>
-
-              <div className="spotlight-buttons-stack">
-                {state.brawlBoxes > 0 && (
-                  <button
-                    type="button"
-                    className="slab primary pulse-box-btn"
-                    onClick={() => {
-                      sound.playClick();
-                      setGarageOpen(true);
-                    }}
-                  >
-                    <Gift size={20} />
-                    <span>
-                      {isHe
-                        ? `🎁 פתח תיבת מגה (${state.brawlBoxes})!`
-                        : `🎁 Open Mega Box (${state.brawlBoxes})!`}
-                    </span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  className="slab codex-spotlight-btn"
-                  onClick={() => {
-                    sound.playHackActivate();
-                    setCodexOpen(true);
-                  }}
-                >
-                  <Zap size={20} />
-                  <span>
-                    {isHe
-                      ? '⚡ פתח את ספר ההאקים הסודי!'
-                      : '⚡ Open Secret Hacker Codex!'}
-                  </span>
-                </button>
-              </div>
-            </aside>
-
-            {/* Right Area: Difficulty Tier Bar + 4 World Event Cards */}
-            <section className="worlds-showcase-section">
-              <div className="tier-selector-card">
-                <span className="tier-title">{t.difficultyLabel}</span>
-                <div className="tier-buttons-row">
-                  <button
-                    type="button"
-                    className={`slab tier-btn ${
-                      state.tier === 'rookie' ? 'primary' : ''
-                    }`}
-                    onClick={() => setTier('rookie')}
-                  >
-                    {t.tierRookie}
-                  </button>
-                  <button
-                    type="button"
-                    className={`slab tier-btn ${
-                      state.tier === 'pro' ? 'primary' : ''
-                    }`}
-                    onClick={() => setTier('pro')}
-                  >
-                    {t.tierPro}
-                  </button>
-                  <button
-                    type="button"
-                    className={`slab tier-btn ${
-                      state.tier === 'master' ? 'primary' : ''
-                    }`}
-                    onClick={() => setTier('master')}
-                  >
-                    {t.tierMaster}
-                  </button>
-                </div>
-              </div>
-
-              {/* 4 Brawl Event Cards */}
-              <div className="worlds-cards-grid">
-                {/* World 1: Mecha-Dino Forge (+) */}
-                <article className="world-event-card card-dino">
-                  <div className="world-card-top">
-                    <span className="world-emoji-medallion">🦖</span>
-                    <div className="world-title-block">
-                      <span className="world-op-badge gold-badge">
-                        {t.worlds.dino.badge}
-                      </span>
-                      <h3>{t.worlds.dino.name}</h3>
-                    </div>
-                  </div>
-                  <p className="world-desc">{t.worlds.dino.desc}</p>
-                  <button
-                    type="button"
-                    className="slab primary world-play-btn"
-                    onClick={() => {
-                      sound.playClick();
-                      setScreen('dino');
-                    }}
-                  >
-                    <Play size={20} />
-                    <span>{t.worlds.dino.playBtn}</span>
-                  </button>
-                </article>
-
-                {/* World 2: Galactic Star-Slicer (-) */}
-                <article className="world-event-card card-space">
-                  <div className="world-card-top">
-                    <span className="world-emoji-medallion">🚀</span>
-                    <div className="world-title-block">
-                      <span className="world-op-badge cyan-badge">
-                        {t.worlds.space.badge}
-                      </span>
-                      <h3>{t.worlds.space.name}</h3>
-                    </div>
-                  </div>
-                  <p className="world-desc">{t.worlds.space.desc}</p>
-                  <button
-                    type="button"
-                    className="slab primary world-play-btn"
-                    onClick={() => {
-                      sound.playClick();
-                      setScreen('space');
-                    }}
-                  >
-                    <Play size={20} />
-                    <span>{t.worlds.space.playBtn}</span>
-                  </button>
-                </article>
-
-                {/* World 3: Cyber-Dragon Multi-Storm (×) */}
-                <article className="world-event-card card-dragon">
-                  <div className="world-card-top">
-                    <span className="world-emoji-medallion">🐉</span>
-                    <div className="world-title-block">
-                      <span className="world-op-badge magenta-badge">
-                        {t.worlds.dragon.badge}
-                      </span>
-                      <h3>{t.worlds.dragon.name}</h3>
-                    </div>
-                  </div>
-                  <p className="world-desc">{t.worlds.dragon.desc}</p>
-                  <button
-                    type="button"
-                    className="slab primary world-play-btn"
-                    onClick={() => {
-                      sound.playClick();
-                      setScreen('dragon');
-                    }}
-                  >
-                    <Play size={20} />
-                    <span>{t.worlds.dragon.playBtn}</span>
-                  </button>
-                </article>
-
-                {/* World 4: Neon Dash Runner (⚡) */}
-                <article className="world-event-card card-dash">
-                  <div className="world-card-top">
-                    <span className="world-emoji-medallion">⚡</span>
-                    <div className="world-title-block">
-                      <span className="world-op-badge green-badge">
-                        {t.worlds.dash.badge}
-                      </span>
-                      <h3>{t.worlds.dash.name}</h3>
-                    </div>
-                  </div>
-                  <p className="world-desc">{t.worlds.dash.desc}</p>
-                  <button
-                    type="button"
-                    className="slab primary world-play-btn"
-                    onClick={() => {
-                      sound.playClick();
-                      setScreen('dash');
-                    }}
-                  >
-                    <Play size={20} />
-                    <span>{t.worlds.dash.playBtn}</span>
-                  </button>
-                </article>
-              </div>
-            </section>
-          </div>
-        )}
-
-        {screen === 'dino' && (
-          <DinoForgeMode
-            lang={state.lang}
-            tier={state.tier}
-            heroId={state.selectedHeroId}
-            calmMode={state.calmMode}
-            onBack={() => setScreen('lobby')}
-            onSuccess={recordSuccess}
-            onHackUsed={recordHackBonus}
-          />
-        )}
-
-        {screen === 'space' && (
-          <SpaceSlicerMode
-            lang={state.lang}
-            tier={state.tier}
-            heroId={state.selectedHeroId}
-            calmMode={state.calmMode}
-            onBack={() => setScreen('lobby')}
-            onSuccess={recordSuccess}
-            onHackUsed={recordHackBonus}
-          />
-        )}
-
-        {screen === 'dragon' && (
-          <DragonStormMode
-            lang={state.lang}
-            tier={state.tier}
-            heroId={state.selectedHeroId}
-            calmMode={state.calmMode}
-            onBack={() => setScreen('lobby')}
-            onSuccess={recordSuccess}
-            onHackUsed={recordHackBonus}
-          />
-        )}
-
-        {screen === 'dash' && (
-          <NeonDashMode
-            lang={state.lang}
-            tier={state.tier}
-            heroId={state.selectedHeroId}
-            calmMode={state.calmMode}
-            onBack={() => setScreen('lobby')}
-            onSuccess={recordSuccess}
-            onHackUsed={recordHackBonus}
-          />
-        )}
-      </main>
-
-      {/* MODALS */}
+      {/* VISUAL HACK LAB MODAL */}
       {codexOpen && (
         <HackerCodexModal
           lang={state.lang}
@@ -446,6 +411,7 @@ export const App: React.FC = () => {
         />
       )}
 
+      {/* BRAWLER GARAGE MODAL */}
       {garageOpen && (
         <HeroGarageModal
           lang={state.lang}
@@ -453,7 +419,10 @@ export const App: React.FC = () => {
           selectedHeroId={state.selectedHeroId}
           brawlBoxes={state.brawlBoxes}
           calmMode={state.calmMode}
-          onSelectHero={selectHero}
+          onSelectHero={(id) => {
+            selectHero(id);
+            setGarageOpen(false);
+          }}
           onOpenBox={openBrawlBox}
           onClose={() => setGarageOpen(false)}
         />
@@ -461,4 +430,5 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
 export default App;
